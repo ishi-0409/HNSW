@@ -1,0 +1,35 @@
+# データセットは git に入れない
+/data/*
+!/data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# 計測結果・図は必要に応じて（今は追跡する）
+
+# OS 生成ファイル
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# エディタ / IDE
+.vscode/
+.idea/
+*.swp
+
+# Python ビルド成果物
+build/
+dist/
+*.egg-info/
+
+# 型チェック / lint / カバレッジのキャッシュ
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter（ノートブックを使う場合）
+.ipynb_checkpoints/
