@@ -5,6 +5,7 @@ description = "HNSW およびグラフ近似最近傍探索の実装と実験（
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "faiss-cpu>=1.15.1",
     "numpy",
 ]
 
