@@ -29,12 +29,9 @@ Windows の PowerShell では `curl` が別コマンドの別名になってい�
 
 ### 自分で生成するデータ（data/）
 
-`data/` は git に入らないので、clone した直後はフォルダ自体がない。最初に次を実行するとデータと正解が作られる。
+`data/` の中身は git に入らないので、clone した直後は空。最初に次を実行するとデータと正解が作られる。
 
 ```bash
-# data/ フォルダを作る
-mkdir data
-
 # 一様乱数のデータ data/X.npy, data/Q.npy を作る
 uv run python step0.py
 
