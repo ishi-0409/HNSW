@@ -25,16 +25,16 @@ hnsw-thesis/
 ├── pyproject.toml        # uv が管理
 ├── uv.lock
 ├── README.md             # 動かし方と実験の記録
-├── src/hnsw_thesis/      # 自作の実装
-│   ├── search.py         # アルゴリズム2と5
-│   ├── insert.py         # アルゴリズム1
-│   ├── select.py         # アルゴリズム3と4（後で NSG や Vamana の選び方も追加）
-│   └── metrics.py        # 距離計算のカウント、Recall の計算
-├── tests/                # 数直線の例のような、答えが分かる小さな確認
-├── experiments/          # 実験スクリプト。1つの実験に1ファイル
-├── data/                 # データセット（git に入れない）
-├── results/              # 計測結果の CSV
-└── figures/              # 卒論に貼るグラフ
+├── siftsmall/            # ダウンロードした SIFT10K（中身は変更しない）
+├── data/                 # 自分で生成したデータ・正解・グラフ（.npy、git に入れない）
+├── results/              # 計測結果（csv）と図（png）
+├── common.py             # 全 Step で使う関数（読み込み、データ生成、全探索、recall）
+├── graph.py              # Step 2 以降用
+├── nsw.py                # Step 2 以降用
+├── hnsw.py               # Step 2 以降用
+├── step0.py              # Step 0 の確認コード
+├── step1.py              # Step 1 の確認コード
+└── _old/                 # 整理前のファイル
 ```
 
 ## 実験の記録
