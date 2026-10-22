@@ -23,13 +23,12 @@ def brute_force(X, q, k):
     dists = np.linalg.norm(X - q, axis=1)
     return np.argsort(dists)[:k]
 
-
+# 近似採点
 def recall_at_k(pred, gt, k):
-    """recall@k を計算する。
+    gt_top   = gt[:k]
+    pred_set = set(pred.tolist())
+    gt_set   = set(gt_top.tolist())
+    hits     = gt_set & pred_set
+    return len(hits) / k
 
-    pred : 探索で得た近傍の番号(上位 k 件)
-    gt   : 正解の近傍の番号
-    k    : 何件までで比べるか
-    戻り値 : 正解の上位 k 件のうち、pred の上位 k 件に含まれていた割合 (0.0〜1.0)
-    """
-    raise NotImplementedError
+
