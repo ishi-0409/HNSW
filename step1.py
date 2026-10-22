@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import numpy as np
+import time
+import csv
+from datetime import datetime
 
 from common import read_fvecs, read_ivecs, brute_force, recall_at_k
 
@@ -68,3 +71,35 @@ GT = read_ivecs(SIFT / "siftsmall_groundtruth.ivecs")
 
 # d = np.linalg.norm(X_u[GT_u2[0]] - Q_u[0], axis=1)
 # print(np.all(np.diff(d) >= 0))   # True になるはず
+
+# ---- 1-5: 全探索の速さを記録する ----
+# ウォームアップ1回のあと5回測って中央値をとる
+X_u = np.load(DATA / "X.npy")
+Q_u = np.load(DATA / "Q.npy")
+
+K = 10
+N_REPEATS = 5
+
+rows = []
+for name, Xd, Qd in [("sift10k", X, Q), ("uniform", X_u, Q_u)]:
+    times = []
+    for rep in range(1 + N_REPEATS):
+        t0 = time.perf_counter()
+
+        for i in range(len(Qd)):
+            brute_force(Xd, Qd[i], K)
+
+        t1 = time.perf_counter()
+
+        if rep > 0:   # 1回目はウォームアップなので捨てる
+            times.append((t1 - t0) / len(Qd))   # 1クエリあたりの時間(秒)
+
+    ms = np.median(times) * 1000
+    rows.append([datetime.now().isoformat(timespec="seconds"), name, Xd.shape[0], Xd.shape[1], K,
+                 len(Qd), N_REPEATS, f"{ms:.3f}", f"{1000 / ms:.1f}"])
+    print(name, f"{ms:.3f} ms/クエリ", f"{1000 / ms:.1f} QPS")
+
+with open(ROOT / "results" / "step1_brute_force.csv", "w", newline="") as f:
+    w = csv.writer(f)
+    w.writerow(["date", "dataset", "n", "d", "k", "n_queries", "n_repeats", "median_ms_per_query", "qps"])
+    w.writerows(rows)

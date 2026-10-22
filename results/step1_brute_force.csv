@@ -1,0 +1,3 @@
+date,dataset,n,d,k,n_queries,n_repeats,median_ms_per_query,qps
+2026-10-22T16:22:28,sift10k,10000,128,10,100,5,4.492,222.6
+2026-10-22T16:22:29,uniform,10000,32,10,100,5,1.362,734.1
