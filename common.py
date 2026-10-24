@@ -26,7 +26,7 @@ def brute_force(X, q, k):
 # 近似採点
 def recall_at_k(pred, gt, k):
     gt_top   = gt[:k]
-    pred_set = set(pred.tolist())
+    pred_set = set(np.asarray(pred).tolist())
     gt_set   = set(gt_top.tolist())
     hits     = gt_set & pred_set
     return len(hits) / k

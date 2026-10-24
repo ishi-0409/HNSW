@@ -1,6 +1,6 @@
 from pathlib import Path
 import numpy as np
-from common import read_fvecs, read_ivecs, brute_force
+from common import read_fvecs, read_ivecs, brute_force, recall_at_k
 from graph import build_knn_graph, greedy_search
 import csv
 
@@ -44,8 +44,8 @@ expected = expected[expected != 0][:10]
 
 
 # 貪欲法のテスト
-# M = 10
-# g = graph[:, :M]
+M = 10
+g = graph[:, :M]
 # cur, hops, n_dist = greedy_search(X, g, Q[0], entry=0)
 # print("止まった点:", cur, " 真の1位:", GT[0][0])
 # print("ホップ数:", hops, " 距離計算:", n_dist)
@@ -61,3 +61,20 @@ expected = expected[expected != 0][:10]
 # for p, d in path:
 #     print(p, d)
 
+rows = []
+for qi in range(len(Q)):
+    res = greedy_search(X, g, Q[qi], entry=0)
+    r1 = recall_at_k([res["stop"]], GT[qi], 1)
+    r10 = recall_at_k(res["topk"], GT[qi], 10)
+    rows.append([qi, r1, r10, res["n_dist"], res["hops"], len(res["topk"])])
+
+arr = np.array(rows)          # (100, 6) の表にする
+print("recall@1 :", arr[:, 1].mean())
+print("recall@10:", arr[:, 2].mean())
+print("距離計算 :", arr[:, 3].mean())
+print("ホップ数 :", arr[:, 4].mean())
+
+with open(ROOT / "results" / "step2_greedy_M10_entry0.csv", "w", newline="") as f:
+    w = csv.writer(f)
+    w.writerow(["query", "recall1", "recall10", "n_dist", "hops", "n_topk"])
+    w.writerows(rows)
