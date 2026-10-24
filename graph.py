@@ -8,7 +8,7 @@ def build_knn_graph(X, k):
     for i in range(N):
         idx = brute_force(X, X[i], k + 1)
         graph[i] = idx[idx != i][:k]
-        if i % 100 == 0:
+        if i % 1000 == 0:
             print(i)
     return graph
 
