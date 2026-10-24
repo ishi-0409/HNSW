@@ -13,12 +13,13 @@ def build_knn_graph(X, M):
     return graph
 
 # 貪欲法
-def greedy_search(X, graph, q, entry):
+def greedy_search(X, graph, q, entry, return_path=False):
     cur = entry
     cur_d = np.linalg.norm(X[cur] - q)
     n_dist = 1
     visited = {cur}
     hops = 0
+    path = [(cur, cur_d)]
     while True:
         ids = [i for i in graph[cur] if i not in visited]
         if len(ids) == 0:
@@ -31,9 +32,12 @@ def greedy_search(X, graph, q, entry):
         best_d = dists[best]
         if best_d < cur_d:
             cur, cur_d = best_id, best_d
+            path.append((cur, cur_d))
             hops += 1
         else:
             break
+    if return_path:
+        return cur, hops, n_dist, path
     return cur, hops, n_dist
 
 

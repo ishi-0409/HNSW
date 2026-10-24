@@ -44,14 +44,20 @@ expected = expected[expected != 0][:10]
 
 
 # 貪欲法のテスト
-M = 10
-g = graph[:, :M]
-cur, hops, n_dist = greedy_search(X, g, Q[0], entry=0)
-print("止まった点:", cur, " 真の1位:", GT[0][0])
-print("ホップ数:", hops, " 距離計算:", n_dist)
+# M = 10
+# g = graph[:, :M]
+# cur, hops, n_dist = greedy_search(X, g, Q[0], entry=0)
+# print("止まった点:", cur, " 真の1位:", GT[0][0])
+# print("ホップ数:", hops, " 距離計算:", n_dist)
 
-d_all = np.linalg.norm(X - Q[0], axis=1)
-order = np.argsort(d_all)
-print("点74の距離:", d_all[74], " 真の1位の距離:", d_all[GT[0][0]])
-print("点74の近所の最小距離:", d_all[g[74]].min())
-print("点74は全体で何位か:", np.where(order == 74)[0][0] + 1)
+# d_all = np.linalg.norm(X - Q[0], axis=1)
+# order = np.argsort(d_all)
+# print("点74の距離:", d_all[74], " 真の1位の距離:", d_all[GT[0][0]])
+# print("点74の近所の最小距離:", d_all[g[74]].min())
+# print("点74は全体で何位か:", np.where(order == 74)[0][0] + 1)
+
+# 貪欲法の経路表示
+# cur, hops, n_dist, path = greedy_search(X, g, Q[0], entry=0, return_path=True)
+# for p, d in path:
+#     print(p, d)
+
