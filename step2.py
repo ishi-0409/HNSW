@@ -135,6 +135,32 @@ def step2_6_greedy_M_entry() -> None:
 
     pd.DataFrame(rows).to_csv(RESULTS / "step2_greedy_M_entry.csv", index=False)
 
+# ---- 2-8: 入口を入次数上位5点に固定して計測 ----
+def step2_8_hub_entry():
+    X, Q, GT = load_sift()
+
+    Ms = [5, 10, 20, 40]
+    full = np.load(DATA / "knn_sift10k_M40.npy")
+    rows = []
+    for M in Ms:
+        graph = full[:, :M]
+        indeg = np.bincount(graph.ravel(), minlength=len(X))
+        hubs = np.argsort(-indeg, kind="stable")[:5]
+        for h_rank, h in enumerate(hubs):
+            for i, q in enumerate(Q):
+                r = greedy_search(X, graph, q, int(h))
+                rows.append({
+                    "M": M, "hub_rank": h_rank, "entry": int(h),
+                    "entry_indeg": int(indeg[h]), "query": i,
+                    "stop": r["stop"], "hops": r["hops"], "n_dist": r["n_dist"],
+                    "n_topk": len(r["topk"]),
+                    "recall1": recall_at_k([r["stop"]], GT[i], 1),
+                    "recall10": recall_at_k(r["topk"], GT[i], 10),
+                    "d_stop": np.linalg.norm(X[r["stop"]] - q),
+                    "d_true1": np.linalg.norm(X[GT[i, 0]] - q), 
+                })
+    pd.DataFrame(rows).to_csv(RESULTS / "step2_greedy_hub_entry.csv", index=False)
+
 
 if __name__ == "__main__":
     step2_2_build_graph()

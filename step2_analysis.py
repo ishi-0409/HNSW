@@ -156,6 +156,41 @@ def step2_7_entry(df: pd.DataFrame) -> None:
     print(e.round(1))
     e.to_csv(RESULTS / "step2_7_entry_rank.csv")
 
+# ---- 2-8: ハブ入口とランダム入口(2-6)の比較 ----
+def step2_8_summary():
+    hub = pd.read_csv(RESULTS / "step2_greedy_hub_entry.csv")
+    rnd = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    cols = ["recall1", "recall10", "n_dist", "hops"]
+    out = {}
+    for name, df, key in [("hub", hub, "hub_rank"), ("random", rnd, "seed")]:
+        per = df.groupby(["M", key])[cols].mean() #入口ごとの100クエリ平均
+        out[name] = per.groupby("M").agg(["mean", "min", "max"])
+    summary = pd.concat(out, names=["entry"]).round(3)
+    print(summary)
+    summary.to_csv(RESULTS / "step2_8_summary.csv")
+    print(hub.groupby("M")["entry_indeg"].agg(["min", "max"])) #使ったハブの入次数
+
+# ---- 2-8: ハブ入口の順位と、その場で止まった割合 ----
+def step2_8_entry_rank():
+    X, Q, GT = load_sift()
+    D = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
+    out = {}
+    for name, path in [("hub", "step2_greedy_hub_entry.csv"),
+                       ("random", "step2_greedy_M_entry.csv")]:
+        df = pd.read_csv(RESULTS / path)
+        df["entry_rank"] = [int((D[qi] < D[qi, e]).sum()) + 1
+                            for qi, e in zip(df["query"], df["entry"])]
+        df["stuck"] = df["hops"] == 0
+        out[name] = df.groupby("M").agg(
+            entry_rank=("entry_rank", "median"),
+            stuck=("stuck", "mean"),
+            recall1=("recall1", "mean")
+        )
+    summary = pd.concat(out, names=["entry"]).round(3)
+    print(summary)
+    summary.to_csv(RESULTS / "step2_8_entry_rank.csv")
+
+
 
 if __name__ == "__main__":
     step2_6_summary()
