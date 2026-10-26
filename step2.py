@@ -3,9 +3,12 @@ import numpy as np
 from common import read_fvecs, read_ivecs, brute_force, recall_at_k
 from graph import build_knn_graph, greedy_search
 import csv
+import pandas as pd
 
 ROOT = Path(__file__).parent
+DATA = ROOT / "data"
 SIFT = ROOT / "siftsmall"
+RESULTS = ROOT / "results"
 
 # ---- データ読み込み(SIFT10K) ----
 X  = read_fvecs(SIFT / "siftsmall_base.fvecs")
@@ -61,20 +64,52 @@ g = graph[:, :M]
 # for p, d in path:
 #     print(p, d)
 
-rows = []
-for qi in range(len(Q)):
-    res = greedy_search(X, g, Q[qi], entry=0)
-    r1 = recall_at_k([res["stop"]], GT[qi], 1)
-    r10 = recall_at_k(res["topk"], GT[qi], 10)
-    rows.append([qi, r1, r10, res["n_dist"], res["hops"], len(res["topk"])])
+# rows = []
+# for qi in range(len(Q)):
+#     res = greedy_search(X, g, Q[qi], entry=0)
+#     r1 = recall_at_k([res["stop"]], GT[qi], 1)
+#     r10 = recall_at_k(res["topk"], GT[qi], 10)
+#     rows.append([qi, r1, r10, res["n_dist"], res["hops"], len(res["topk"])])
 
-arr = np.array(rows)          # (100, 6) の表にする
-print("recall@1 :", arr[:, 1].mean())
-print("recall@10:", arr[:, 2].mean())
-print("距離計算 :", arr[:, 3].mean())
-print("ホップ数 :", arr[:, 4].mean())
+# arr = np.array(rows)          # (100, 6) の表にする
+# print("recall@1 :", arr[:, 1].mean())
+# print("recall@10:", arr[:, 2].mean())
+# print("距離計算 :", arr[:, 3].mean())
+# print("ホップ数 :", arr[:, 4].mean())
 
-with open(ROOT / "results" / "step2_greedy_M10_entry0.csv", "w", newline="") as f:
-    w = csv.writer(f)
-    w.writerow(["query", "recall1", "recall10", "n_dist", "hops", "n_topk"])
-    w.writerows(rows)
+# with open(ROOT / "results" / "step2_greedy_M10_entry0.csv", "w", newline="") as f:
+#     w = csv.writer(f)
+#     w.writerow(["query", "recall1", "recall10", "n_dist", "hops", "n_topk"])
+#     w.writerows(rows)
+
+
+
+# Ms = [5, 10, 20, 40]
+# seeds = range(5)
+# full = np.load(DATA / "knn_sift10k_M40.npy")
+# entries = np.stack([np.random.default_rng(s).integers(0, len(X), size=len(Q))
+#                     for s in seeds])
+
+# rows = []
+# for M in Ms:
+#     graph = full[:, :M]
+#     for s in seeds:
+#         for i, q in enumerate(Q):
+#             entry = int(entries[s, i])
+#             r = greedy_search(X, graph, q, entry)
+#             rows.append({
+#                 "M": M, "seed": s, "query": i, "entry": entry,
+#                 "stop": r["stop"], "hops": r["hops"], "n_dist": r["n_dist"],
+#                 "n_topk": len(r["topk"]),
+#                 "recall1": recall_at_k([r["stop"]], GT[i], 1),
+#                 "recall10": recall_at_k(r["topk"], GT[i], 10),
+#                 "d_stop": np.linalg.norm(X[r["stop"]] - q),
+#                 "d_true1": np.linalg.norm(X[GT[i, 0]] - q),
+
+#             })
+
+# pd.DataFrame(rows).to_csv(RESULTS / "step2_greedy_M_entry.csv", index=False)
+
+
+
+
