@@ -2,7 +2,7 @@ import numpy as np
 from common import brute_force
 
 # knnグラフ構築
-def build_knn_graph(X, M):
+def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
     N = len(X)
     graph = np.empty((N, M), dtype=np.int32)
     for i in range(N):
@@ -13,7 +13,7 @@ def build_knn_graph(X, M):
     return graph
 
 # 貪欲法
-def greedy_search(X, graph, q, entry, k=10):
+def greedy_search(X: np.ndarray, graph: np.ndarray, q: np.ndarray, entry: int, k: int = 10) -> dict:
     cur = entry
     cur_d = np.linalg.norm(X[cur] - q)
     n_dist = 1
