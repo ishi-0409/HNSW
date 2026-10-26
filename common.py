@@ -2,6 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
+ROOT = Path(__file__).parent
+SIFT = ROOT / "siftsmall"
+
 
 def read_fvecs(path: str | Path) -> np.ndarray:
     a = np.fromfile(path, dtype=np.int32)
@@ -13,6 +16,14 @@ def read_ivecs(path: str | Path) -> np.ndarray:
     a = np.fromfile(path, dtype=np.int32)
     d = a[0]
     return a.reshape(-1, d + 1)[:, 1:]
+
+
+# SIFT10K のデータ・クエリ・正解を読む
+def load_sift() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    X  = read_fvecs(SIFT / "siftsmall_base.fvecs")
+    Q  = read_fvecs(SIFT / "siftsmall_query.fvecs")
+    GT = read_ivecs(SIFT / "siftsmall_groundtruth.ivecs")
+    return X, Q, GT
 
 
 # 一様乱数のデータ (n, d) を作る
