@@ -1,6 +1,8 @@
 # データセットは git に入れない
 /data/*
 !/data/.gitkeep
+/data_before
+
 
 # Python
 __pycache__/
