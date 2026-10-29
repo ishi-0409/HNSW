@@ -73,10 +73,19 @@ def search_layer(X, graph, q, entries, ef) -> dict:
     while C:
         d_c, c = heapq.heappop(C)
         d_f = -W[0][0]
-        print(d_c, c, d_f)
         if d_c > d_f:
             break
         n_expand += 1
+
+        # cの近所のうち未計測の点だけ距離を計算する
+        ids = [int(e) for e in graph[c] if e not in visited]
+        visited.update(ids)
+        if not ids:
+            continue
+        dists = np.linalg.norm(X[ids] - q, axis=1)
+        n_dist += len(ids)
+        print(c, ids, dists)
+
 
     return {"topk": [], "n_dist": n_dist, "n_expand": n_expand}
 
