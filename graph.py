@@ -68,9 +68,15 @@ def search_layer(X, graph, q, entries, ef) -> dict:
     heapq.heapify(C)
     heapq.heapify(W)
 
-    print("C:", C)
-    print("W:", W)
-    print("n_dist:", n_dist)
+    # ループの停止判断
+    n_expand = 0
+    while C:
+        d_c, c = heapq.heappop(C)
+        d_f = -W[0][0]
+        print(d_c, c, d_f)
+        if d_c > d_f:
+            break
+        n_expand += 1
 
-    return {"topk": [], "n_dist": n_dist, "n_expand": 0}
+    return {"topk": [], "n_dist": n_dist, "n_expand": n_expand}
 
