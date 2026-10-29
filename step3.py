@@ -57,9 +57,31 @@ def step3_7_check_all_ef1() -> None:
     print("行", len(df), "一致", int(df["match"].sum()))
     print(df[-df["match"]])
 
+def step3_8_trial_ef() -> None:
+    X, Q, GT = load_sift()
+    M = 10
+    graph = np.load(DATA / "knn_sift10k_M40.npy")[:, :M]
+    q = Q[0]
+    d_all = np.linalg.norm(X - q, axis=1)
 
+    for ef in [1, 3, 10, 32, 64]:
+        s = search_layer(X, graph, q, [0], ef=ef)
+        topk = s["topk"]
+
+        ok_len = len(topk) == min(ef, s["n_dist"])
+        ok_unique = len(set(topk)) == len(topk)
+        ok_sorted = bool(np.all(np.diff(d_all[topk]) >= 0))
+        ok_bound = s["n_dist"] <= 1 + s["n_expand"] * M
+
+        rank1 = int((d_all < d_all[topk[0]]).sum()) + 1
+        r10 = recall_at_k(topk[:10], GT[0], 10) if ef >= 10 else "-"
+
+        print(ef, s["n_dist"], s["n_expand"], rank1, r10, "|",
+              ok_len, ok_unique, ok_sorted, ok_bound)
+        
 if __name__ == "__main__":
     # step3_1_check_init()
     # step3_6_compare_greedy()
-    step3_7_check_all_ef1()
-
+    # step3_7_check_all_ef1()
+    step3_8_trial_ef()
+    
