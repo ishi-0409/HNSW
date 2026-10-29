@@ -1,5 +1,6 @@
 import numpy as np
 from common import brute_force
+import heapq
 
 # knnグラフ構築
 def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
@@ -41,5 +42,35 @@ def greedy_search(X: np.ndarray, graph: np.ndarray, q: np.ndarray, entry: int, k
     topk = [int(j) for j, d in pairs]
     return {"stop": cur, "hops": hops, "n_dist": n_dist, "path": path, "topk": topk}
 
+# ビーム探索
+def search_layer(X, graph, q, entries, ef) -> dict:
+    """
+    1つの層でビーム探索をして、クエリに近い点を最大ef個返す。
+    ef=1のときは貪欲法と同じになる。
 
+    Args:
+        X: データ(N, d)
+        graph: 近傍リスト(N, M)
+        q: クエリ(d,)
+        entries: 入口の点番号
+        ef: 保持する候補の数
+    Returns:
+        topk: クエリに近い順の点番号(list[int])
+        n_dist: 距離計算回数(int)
+        n_expand: 近所を調べた点の数(int)
+    """
+    
+    d0 = np.linalg.norm(X[entries] - q, axis=1)
+    n_dist = len(entries)
+    visited = set(entries)  #　距離を測った点
+    C = [(d, e) for d, e in zip(d0, entries)]   # 候補   
+    W = [(-d, e) for d, e in zip(d0, entries)]  # 結果
+    heapq.heapify(C)
+    heapq.heapify(W)
+
+    print("C:", C)
+    print("W:", W)
+    print("n_dist:", n_dist)
+
+    return {"topk": [], "n_dist": n_dist, "n_expand": 0}
 
