@@ -86,6 +86,16 @@ def search_layer(X, graph, q, entries, ef) -> dict:
         n_dist += len(ids)
         print(c, ids, dists)
 
+        # C, Wを更新
+        for e, d_e in zip(ids, dists):
+            d_f = -W[0][0]
+            if d_e < d_f or len(W) < ef:
+                heapq.heappush(C, (d_e, e))
+                heapq.heappush(W, (-d_e, e))
+                if len(W) > ef:
+                    heapq.heappop(W)
+
+
 
     return {"topk": [], "n_dist": n_dist, "n_expand": n_expand}
 
