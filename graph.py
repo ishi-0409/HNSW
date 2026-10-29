@@ -84,7 +84,6 @@ def search_layer(X, graph, q, entries, ef) -> dict:
             continue
         dists = np.linalg.norm(X[ids] - q, axis=1)
         n_dist += len(ids)
-        print(c, ids, dists)
 
         # C, Wを更新
         for e, d_e in zip(ids, dists):
@@ -95,7 +94,9 @@ def search_layer(X, graph, q, entries, ef) -> dict:
                 if len(W) > ef:
                     heapq.heappop(W)
 
+    #探索済みWのリストを距離が近い順にソートする
+    topk = [int(e) for _, e in sorted((-neg_d, e) for neg_d, e in W)]
 
 
-    return {"topk": [], "n_dist": n_dist, "n_expand": n_expand}
+    return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand}
 
