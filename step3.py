@@ -33,7 +33,33 @@ def step3_6_compare_greedy() -> None:
     print("n_dist", g["n_dist"], s["n_dist"], g["n_dist"] == s["n_dist"])
     print("ホップ", g["hops"], s["n_expand"] - 1, g["hops"] == s["n_expand"] - 1)
 
+# 2000クエリで貪欲法をef=1のビーム探索を比較
+def step3_7_check_all_ef1() -> None:
+    X, Q, GT = load_sift()
+    full = np.load(DATA / "knn_sift10k_M40.npy")
+    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+
+    rows = []
+    for r in df2.itertuples():
+        s = search_layer(X, full[:, :r.M], Q[r.query], [int(r.entry)], ef=1)
+        rows.append({
+            "M": r.M, "seed": r.seed, "query": r.query, "entry": r.entry,
+            "stop2": r.stop, "stop3": s["topk"][0],
+            "n_dist2": r.n_dist, "n_dist3": s["n_dist"],
+            "hops2": r.hops, "hops3": s["n_expand"] - 1,
+        })
+    df = pd.DataFrame(rows)
+    df["match"] = ((df["stop2"] == df["stop3"])
+                   & (df["n_dist2"] == df["n_dist3"])
+                   & (df["hops2"] == df["hops3"]))
+    df.to_csv(RESULTS / "step3_7_ef1_vs_greedy.csv", index=False)
+
+    print("行", len(df), "一致", int(df["match"].sum()))
+    print(df[-df["match"]])
+
+
 if __name__ == "__main__":
     # step3_1_check_init()
-    step3_6_compare_greedy()
+    # step3_6_compare_greedy()
+    step3_7_check_all_ef1()
 
