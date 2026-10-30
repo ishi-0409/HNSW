@@ -1,6 +1,7 @@
 import numpy as np
 from common import brute_force
 import heapq
+from collections import deque
 
 # knnグラフ構築
 def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
@@ -100,3 +101,23 @@ def search_layer(X, graph, q, entries, ef) -> dict:
 
     return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand}
 
+# ゴールにたどり着けるかの確認
+def reachable_from(graph: np.ndarray, entries: list[int]) -> np.ndarray:
+    n = graph.shape[0]
+    visited = np.zeros(n, dtype=bool)
+    queue: deque[int] = deque()
+
+    for e in entries:
+        if not visited[e]:
+            visited[e] = True
+            queue.append(int(e))
+
+    while queue:
+        c = queue.popleft()
+        for nb in graph[c]:
+            if not visited[nb]:
+                visited[nb] = True
+                queue.append(int(nb))
+
+    return visited
+            

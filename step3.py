@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from common import load_sift, brute_force, recall_at_k
-from graph import build_knn_graph, greedy_search, search_layer
+from graph import build_knn_graph, greedy_search, search_layer, reachable_from
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
@@ -118,10 +118,77 @@ def step3_10_beam_M_ef(
     else:
         print(df.groupby(["M", "ef"])[["recall1", "recall10", "n_dist"]].mean())
 
+def step3_11_check_small() -> None:
+    g = np.array([[1], [2], [0], [0]])
+
+    r0 = reachable_from(g, [0])
+    r3 = reachable_from(g, [3])
+    print("入口0", r0)
+    print("入口3", r3)
+
+    assert r0.tolist() == [True, True, True, False]
+    assert r3.tolist() == [True, True, True, True]
+    print("OK")
+
+def step3_11_reachable(Ms: list[int], save:bool) -> None:
+    X, Q, GT = load_sift()
+    g40 = np.load(DATA / "knn_sift10k_M40.npy")
+
+    with open(RESULTS / "step3_beam_M_ef.csv", newline="") as f:
+        targets = sorted({
+            (int(r["seed"]), int(r["query"]), int(r["entry"]))
+             for r in csv.DictReader(f)
+        })
+
+    out: list[dict] = []
+    for M in Ms:
+        graph = g40[:, :M]
+        indeg = np.bincount(graph.ravel(), minlength=len(graph))
+        print("入ってくる辺が0本の点:", int((indeg == 0).sum()))
+        cache: dict[int, np.ndarray] = {}
+        for seed, q, entry in targets:
+            if entry not in cache:
+                cache[entry] = reachable_from(graph, [entry])
+            mask = cache[entry]
+            out.append({
+                "M": M, "seed": seed, "query": q, "entry": entry,
+                "n_reachable": int(mask.sum()),
+                "bound1": float(mask[GT[q, 0]]),
+                "bound10": float(mask[GT[q, :10]].mean()),
+                "n_indeg0": int((indeg == 0).sum()),
+            })
+        
+        rows_M = [r for r in out if r["M"] == M]
+        n_r = [r["n_reachable"] for r in rows_M]
+        print(f"M={M}: 届く点 {min(n_r)}〜{max(n_r)}, "
+              f"bound10 平均 {np.mean([r['bound10'] for r in rows_M]):.3f}")
+    
+    if save:
+        with open(RESULTS / "step3_11_bound.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(out[0].keys()))
+            w.writeheader()
+            w.writerows(out)
+
+def step3_11_check_vs_beam() -> None:
+    "recall10がbound10を超えていないか確認する"
+    with open(RESULTS / "step3_11_bound.csv", newline="") as f:
+        bound = {
+            (int(r["M"]), int(r["seed"]), int(r["query"])): float(r["bound10"])
+            for r in csv.DictReader(f)
+        }
+    with open(RESULTS / "step3_beam_M_ef.csv", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    bad = [r for r in rows
+           if float(r["recall10"]) > bound[(int(r["M"]), int(r["seed"]), int(r["query"]))] + 1e-9]
+    print(f"{len(rows)} 行中、recall10 > bound10 の行: {len(bad)}")
+
 
 if __name__ == "__main__":
     # step3_1_check_init()
     # step3_6_compare_greedy()
     # step3_7_check_all_ef1()
-    step3_10_beam_M_ef()
-
+    # step3_10_beam_M_ef()
+    # step3_11_check_small()
+    # step3_11_reachable([10, 20, 40], save=True)
+    step3_11_check_vs_beam()
