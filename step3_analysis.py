@@ -105,7 +105,58 @@ def step3_13_compare(save:bool) -> pd.DataFrame:
 
     return interp
 
+def step3_14_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """3-14: far の割合と入口シード間の recall の幅が ef でどう変わるか"""
+    df = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+
+    # 1. 一番近い点の本当の順位で4種類に分ける(Step 2-7 と同じ区切り)
+    df["kind"] = pd.cut(df["rank_top1"], bins=[0, 1, 10, 100, np.inf],
+                        labels=["hit", "near", "mid", "far"])
+    kinds = (pd.crosstab([df["M"], df["ef"]], df["kind"])
+             .reindex(columns=["hit", "near", "mid", "far"], fill_value=0)
+             .reset_index())
+    print(kinds.to_string(index=False))
+
+    # 2. シードごとに100クエリ平均 → 5シードの最小〜最大と幅
+    per_seed = (df.groupby(["M", "ef", "seed"])
+                .agg(recall1=("recall1", "mean"), recall10=("recall10", "mean"))
+                .reset_index())
+    width = (per_seed.groupby(["M", "ef"])
+             .agg(r1_min=("recall1", "min"), r1_max=("recall1", "max"),
+                  r10_min=("recall10", "min"), r10_max=("recall10", "max"))
+             .reset_index())
+    width["r1_width"] = width["r1_max"] - width["r1_min"]
+    width["r10_width"] = width["r10_max"] - width["r10_min"]
+    print(width.round(3).to_string(index=False))
+
+    if save:
+        kinds.to_csv(RESULTS / "step3_14_kinds.csv", index=False)
+        width.to_csv(RESULTS / "step3_14_seed_width.csv", index=False)
+    return kinds, width
+
+
+def step3_14_hard_queries(save: bool) -> pd.DataFrame:
+    """3-14 クエリごとに、5入口中何回 far だったかを数える"""
+    df = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+    df["far"] = df["rank_top1"] > 100
+
+    # (M, ef, クエリ) ごとに far の回数(0〜5)
+    per_q = (df.groupby(["M", "ef", "query"])["far"].sum()
+             .reset_index(name="n_far"))
+
+    # (M, ef) ごとに、far 0回・1回・…・5回のクエリがそれぞれ何個あるか
+    dist = (pd.crosstab([per_q["M"], per_q["ef"]], per_q["n_far"])
+            .reindex(columns=range(6), fill_value=0)
+            .reset_index())
+    print(dist.to_string(index=False))
+
+    if save:
+        per_q.to_csv(RESULTS / "step3_14_far_per_query.csv", index=False)
+        dist.to_csv(RESULTS / "step3_14_far_dist.csv", index=False)
+    return dist
 
 if __name__ == "__main__":
     # step3_12_curve(save=True)
-    step3_13_compare(save=True)
+    # step3_13_compare(save=True)
+    step3_14_review(save=True)
+    step3_14_hard_queries(save=True)
