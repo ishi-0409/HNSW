@@ -1,4 +1,5 @@
 import numpy as np
+from graph import SearchResult, search_layer
 
 def init_nsw(n: int, seed: int) -> tuple[list[list[int]], np.ndarray]:
     "空の近所リストとランダムな挿入順を返す"
@@ -20,3 +21,20 @@ def insert_first_two(graph: list[list[int]], order: np.ndarray):
     add_edge(graph, first, second)
     return first
 
+def insert_point(
+        X: np.ndarray,
+        graph: list[list[int]],
+        idx: int,
+        entry: int,
+        M: int,
+        ef_construction: int,
+        ) -> int:
+    "点idxをグラフに入れ、距離計算回数を返す。"
+    q: np.ndarray = X[idx]
+    res: SearchResult = search_layer(X, graph, q, [entry], ef_construction)
+    neighbors: list[int] = res["topk"][:M]
+
+    for nb in neighbors:
+        add_edge(graph, idx, nb)
+
+    return res["n_dist"]

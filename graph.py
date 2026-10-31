@@ -2,6 +2,12 @@ import numpy as np
 from common import brute_force
 import heapq
 from collections import deque
+from typing import TypedDict
+
+class SearchResult(TypedDict):
+    topk: list[int]     # 近い順の点番号
+    n_dist: int         # 距離計算回数
+    n_expand: int       # 近所を調べた点の数
 
 # knnグラフ構築
 def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
@@ -44,7 +50,7 @@ def greedy_search(X: np.ndarray, graph: np.ndarray, q: np.ndarray, entry: int, k
     return {"stop": cur, "hops": hops, "n_dist": n_dist, "path": path, "topk": topk}
 
 # ビーム探索
-def search_layer(X, graph, q, entries, ef) -> dict:
+def search_layer(X, graph, q, entries, ef) -> SearchResult:
     """
     1つの層でビーム探索をして、クエリに近い点を最大ef個返す。
     ef=1のときは貪欲法と同じになる。

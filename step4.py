@@ -1,6 +1,6 @@
 import numpy as np
 from common import load_sift
-from nsw import init_nsw, add_edge, insert_first_two
+from nsw import init_nsw, add_edge, insert_first_two, insert_point
 
 def step4_1_check_init():
     X, Q, GT = load_sift()
@@ -46,4 +46,35 @@ def step4_2_check_first_two():
     print("入口", entry, "2点目", o1)
     print("OK")
 
-    
+def step4_3_check_line():
+    X = np.array([[0.0], [10.0], [4.0], [7.0], [2.0]])
+    names = ["A", "B", "C", "D", "E"]
+    order = np.array([0, 1, 2, 3, 4])
+    M = 2
+    ef_construction = 10
+
+    graph: list[list[int]] = [[] for _ in range(len(X))]
+    entry = insert_first_two(graph, order)   # A と B
+    for idx in order[2:]:                    # C, D, E
+        insert_point(X, graph, int(idx), entry, M, ef_construction)
+
+    for i, nb in enumerate(graph):
+        print(names[i], "->", [names[j] for j in sorted(nb)])
+
+    expected: list[list[int]] = [
+        [1, 2, 4],  # A
+        [0, 2, 3],  # B
+        [0, 1, 3, 4],  # C
+        [1, 2],  # D
+        [0, 2],  # E
+    ]
+    assert [sorted(nb) for nb in graph] == expected
+    print("4-3 OK")
+
+        # 2点目を一般の手順で入れても insert_first_two と同じになるか
+    g1: list[list[int]] = [[] for _ in range(len(X))]
+    insert_first_two(g1, order)
+    g2: list[list[int]] = [[] for _ in range(len(X))]
+    insert_point(X, g2, int(order[1]), int(order[0]), M, ef_construction)
+    assert g1 == g2
+    print("2点目の検算 OK")
