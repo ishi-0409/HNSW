@@ -38,3 +38,18 @@ def insert_point(
         add_edge(graph, idx, nb)
 
     return res["n_dist"]
+
+def build_nsw(
+    X: np.ndarray,
+    M: int,
+    ef_construction: int,
+    seed: int,
+) -> tuple[list[list[int]], np.ndarray, int]:
+    "Xの全点をseedでシャッフルした順に入れ、NSWを作る"
+    graph , order = init_nsw(len(X),seed)
+    entry: int = insert_first_two(graph, order)
+    n_dist_total: int = 0
+    for idx in order[2:]:
+        n_dist_total += insert_point(X, graph, int(idx), entry, M, ef_construction)
+
+    return graph, order, n_dist_total

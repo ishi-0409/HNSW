@@ -1,6 +1,6 @@
 import numpy as np
 from common import load_sift
-from nsw import init_nsw, add_edge, insert_first_two, insert_point
+from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw
 
 def step4_1_check_init():
     X, Q, GT = load_sift()
@@ -78,3 +78,35 @@ def step4_3_check_line():
     insert_point(X, g2, int(order[1]), int(order[0]), M, ef_construction)
     assert g1 == g2
     print("2点目の検算 OK")
+
+def check_nsw_graph(graph: list[list[int]]):
+    "NSWのグラフが満たす4つの性質を確かめる"
+    n = len(graph)
+    indeg = np.zeros(n, dtype=int)
+    for i, nb in enumerate(graph):
+        assert i not in nb , f"自分への辺: {i}"
+        assert len(nb) == len(set(nb)), f"重複した辺: {i}"
+        for j in nb:
+            assert i in graph[j], f"一方通行の辺: {i} -> {j}"
+            indeg[j] += 1
+    assert (indeg > 0).all(), f"入ってくる辺が0本の辺: {int((indeg == 0).sum())}"
+
+def step4_4_check_build():
+    X = np.array([[0.0], [10.0], [4.0], [7.0], [2.0]])
+    graph: list[list[int]] = [[] for _ in range(len(X))]
+    order = np.array([0, 1, 2, 3, 4])
+    entry = insert_first_two(graph, order)
+    for idx in order[2:]:
+        insert_point(X, graph, int(idx), entry, 2, 10)
+    check_nsw_graph(graph)
+    print("OK")
+
+    X, Q, GT = load_sift()
+    X_small = X[:1000]
+    graph, order, n_dist_total = build_nsw(X_small, M=10, ef_construction=100, seed=0)
+    check_nsw_graph(graph)
+    degs = [len(nb) for nb in graph]
+    print("OK")
+    print("平均次数:", np.mean(degs), "最大次数", max(degs))
+    print("構築の距離計算回数", n_dist_total, "全点ペア", 1000 * 999 // 2 )
+    print("OK")
