@@ -163,5 +163,80 @@ def step4_5_build_sift(
     if save:
         pd.DataFrame(rows).to_csv(RESULTS / "step4_5_build.csv", index=False)
 
+def step4_6_check_trick(M: int = 10, ef_construction: int = 100, seed: int = 0, t: int = 100) -> None:
+    """graph[p] の先頭 M 個 = p が挿入時に選んだ M 点、を1点で確かめる。"""
+    X, Q, GT = load_sift()
+    graph_final, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc{ef_construction}_seed{seed}.npz")
+
+    # t 番目の点まで入れたところで止めたグラフを作り直す
+    graph_t, order_t = init_nsw(len(X), seed)
+    assert np.array_equal(order_t, order)
+    entry = insert_first_two(graph_t, order_t)
+    for idx in order_t[2 : t + 1]:
+        insert_point(X, graph_t, int(idx), entry, M, ef_construction)
+
+    p = int(order[t])
+    print("挿入直後の近所:", graph_t[p])
+    print("保存したグラフの先頭 M 個:", graph_final[p][:M])
+    assert graph_t[p] == graph_final[p][:M]
+    print("4-6 の工夫 OK")
+
+
+def step4_6_insert_recall(
+    Ms: tuple[int, ...] = (10, 20, 40),
+    ef_construction: int = 100,
+    seed: int = 0,
+    n_points: int = 100,
+    save: bool = True,
+) -> pd.DataFrame:
+    X, Q, GT = load_sift()
+    n = len(X)
+    positions = np.linspace(100, n - 1, n_points).astype(int)   # 何番目に入れた点か
+    rows = []
+    for M in Ms:
+        graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc{ef_construction}_seed{seed}.npz")
+        for t in positions:
+            p = int(order[t])
+            before = order[:t]                                   # p より前に入っていた点
+            d = np.linalg.norm(X[before] - X[p], axis=1)
+            true_M = set(before[np.argsort(d)[:M]].tolist())     # その時点の本当の近い M 点
+            found_M = set(graph[p][:M])                          # 挿入時に選んだ M 点
+            rows.append({
+                "M": M,
+                "t": int(t),
+                "point": p,
+                "recall_M": len(true_M & found_M) / M,
+            })
+    df = pd.DataFrame(rows)
+    print(df.groupby("M")["recall_M"].agg(["mean", "min", "count"]))
+    if save:
+        df.to_csv(RESULTS / "step4_6_insert_recall.csv", index=False)
+    return df
+
+
+def insert_recall_rows(
+    X: np.ndarray, graph: list[list[int]], order: np.ndarray, M: int, positions: np.ndarray
+) -> list[dict]:
+    """positions 番目に入れた各点について、挿入時の recall_M を計算する。"""
+    rows = []
+    for t in positions:
+        p = int(order[t])
+        before = order[:t]
+        d = np.linalg.norm(X[before] - X[p], axis=1)
+        true_M = set(before[np.argsort(d)[:M]].tolist())
+        found_M = set(graph[p][:M])
+        rows.append({"M": M, "t": int(t), "point": p, "recall_M": len(true_M & found_M) / M})
+    return rows
+
+
+def step4_6_check_small_ef(M: int = 10, ef_construction: int = 10, seed: int = 0) -> None:
+    """ef_construction を小さくすると recall_M が 1.0 未満になるか(測り方の確認)。保存しない。"""
+    X, Q, GT = load_sift()
+    graph, order, _ = build_nsw(X, M, ef_construction, seed)
+    positions = np.linspace(100, len(X) - 1, 100).astype(int)
+    df = pd.DataFrame(insert_recall_rows(X, graph, order, M, positions))
+    print(df["recall_M"].agg(["mean", "min", "count"]))
+    df.to_csv(RESULTS / "step4_6_check_small_ef.csv", index=False)
+
 if __name__ == "__main__":
     step4_5_build_sift()
