@@ -1,4 +1,5 @@
 import numpy as np
+from pathlib import Path
 from graph import SearchResult, search_layer
 
 def init_nsw(n: int, seed: int) -> tuple[list[list[int]], np.ndarray]:
@@ -53,3 +54,20 @@ def build_nsw(
         n_dist_total += insert_point(X, graph, int(idx), entry, M, ef_construction)
 
     return graph, order, n_dist_total
+
+def save_nsw(path: Path, graph: list[list[int]], order: np.ndarray) -> None:
+    """グラフを CSR 形式(offsets, neighbors)にして、order と一緒に .npz に保存する。"""
+    degs = np.array([len(nb) for nb in graph], dtype=np.int64)
+    offsets = np.zeros(len(graph) + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(degs)
+    neighbors = np.array([j for nb in graph for j in nb], dtype=np.int32)
+    np.savez(path, offsets=offsets, neighbors=neighbors, order=order)
+
+
+def load_nsw(path: Path) -> tuple[list[list[int]], np.ndarray]:
+    """save_nsw で保存したファイルから (グラフ, 挿入順) を読み戻す。"""
+    data = np.load(path)
+    offsets = data["offsets"]
+    neighbors = data["neighbors"]
+    graph = [neighbors[offsets[i]:offsets[i + 1]].tolist() for i in range(len(offsets) - 1)]
+    return graph, data["order"]

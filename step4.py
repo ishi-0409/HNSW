@@ -1,6 +1,12 @@
 import numpy as np
 from common import load_sift
-from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw
+from pathlib import Path
+from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw, save_nsw, load_nsw
+import time
+import pandas as pd
+
+DATA = Path(__file__).parent / "data"
+RESULTS = Path(__file__).parent / "results"
 
 def step4_1_check_init():
     X, Q, GT = load_sift()
@@ -110,3 +116,52 @@ def step4_4_check_build():
     print("平均次数:", np.mean(degs), "最大次数", max(degs))
     print("構築の距離計算回数", n_dist_total, "全点ペア", 1000 * 999 // 2 )
     print("OK")
+
+def expected_degree_sum(n: int, M: int) -> int:
+    """k 点目は min(M, k-1) 本の辺を張る。辺1本で次数は2増える。"""
+    return 2 * sum(min(M, k - 1) for k in range(2, n + 1))
+
+
+def step4_5_build_sift(
+    Ms: tuple[int, ...] = (10, 20, 40),
+    ef_construction: int = 100,
+    seed: int = 0,
+    save: bool = True,
+) -> None:
+    X, Q, GT = load_sift()
+    n = len(X)
+    rows = []
+    for M in Ms:
+        t0 = time.perf_counter()
+        graph, order, n_dist = build_nsw(X, M, ef_construction, seed)
+        build_sec = time.perf_counter() - t0
+
+        check_nsw_graph(graph)
+        degs = np.array([len(nb) for nb in graph])
+        assert degs.sum() == expected_degree_sum(n, M)
+
+        row = {
+            "M": M,
+            "ef_construction": ef_construction,
+            "seed": seed,
+            "n_dist_build": n_dist,
+            "ratio_pairs": n_dist / (n * (n - 1) / 2),   # 全点ペア(全探索で挿入)との比
+            "ratio_full": n_dist / (n * n),              # 全点 × 全点との比
+            "avg_deg": float(degs.mean()),
+            "max_deg": int(degs.max()),
+            "build_sec": build_sec,                      # 参考(1回測っただけ)
+        }
+        print(row)
+        rows.append(row)
+
+        if save:
+            path = DATA / f"nsw_sift10k_M{M}_efc{ef_construction}_seed{seed}.npz"
+            save_nsw(path, graph, order)
+            graph2, order2 = load_nsw(path)
+            assert graph2 == graph and np.array_equal(order2, order)
+
+    if save:
+        pd.DataFrame(rows).to_csv(RESULTS / "step4_5_build.csv", index=False)
+
+if __name__ == "__main__":
+    step4_5_build_sift()
