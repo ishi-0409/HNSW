@@ -245,6 +245,54 @@ def step4_12_summary(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
         entries.to_csv(RESULTS / "step4_12_entries.csv", index=False)
     return summary, entries
 
+def step4_13_decompose(save: bool) -> pd.DataFrame:
+    """4-13: 距離計算回数を「調べた点の数」と「1点あたりに新しく測った数」に分ける"""
+    knn = pd.read_csv(RESULTS / "step3_beam_M_ef.csv").assign(graph="knn")
+    nsw = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv").assign(graph="nsw")
+    df = pd.concat([knn, nsw], ignore_index=True)
+
+    table = (df.groupby(["graph", "M", "ef"])
+             .agg(n_dist=("n_dist", "mean"), n_expand=("n_expand", "mean"))
+             .reset_index())
+    # 平均どうしの比にすると、n_dist = 1 + n_expand × per_expand が平均でもちょうど成り立つ
+    table["per_expand"] = (table["n_dist"] - 1) / table["n_expand"]
+
+    # 比べる基準:平均次数(kNN はちょうど M、NSW は 4-8 の次数の csv から)
+    deg = pd.read_csv(RESULTS / "step4_8_degree.csv")
+    nsw_deg = deg.groupby("M")["degree"].agg(["mean", "max"]).reset_index()
+    nsw_deg.columns = ["M", "avg_degree", "max_degree"]
+    table = table.merge(nsw_deg, on="M", how="left")
+    is_knn = table["graph"] == "knn"
+    table.loc[is_knn, "avg_degree"] = table.loc[is_knn, "M"]
+    table.loc[is_knn, "max_degree"] = table.loc[is_knn, "M"]
+    table["per_over_avg"] = table["per_expand"] / table["avg_degree"]
+
+    print(table.round(3).to_string(index=False))
+    if save:
+        table.to_csv(RESULTS / "step4_13_decompose.csv", index=False)
+    return table
+
+def step4_13_check(table: pd.DataFrame) -> None:
+    # 確認1:形と、n_dist が 4-10 と一致
+    assert len(table) == 36
+    s10 = pd.read_csv(RESULTS / "step4_10_summary.csv")
+    m = table.merge(s10, on=["graph", "M", "ef"], suffixes=("", "_10"))
+    assert len(m) == 36
+    assert np.allclose(m["n_dist"], m["n_dist_10"])
+
+    # 確認2:kNN は1点あたり M を超えない
+    knn = table[table["graph"] == "knn"]
+    assert (knn["per_expand"] <= knn["M"]).all()
+
+    # 確認3:NSW は最大次数を超えない
+    nsw = table[table["graph"] == "nsw"]
+    assert (nsw["per_expand"] <= nsw["max_degree"]).all()
+
+    # 確認4:分解が戻る
+    assert np.allclose(1 + table["n_expand"] * table["per_expand"], table["n_dist"])
+
+    print("4-13 の確認:すべて通過")
 
 if __name__ == "__main__":
-    summary, entries = step4_12_summary(save=True)
+    table = step4_13_decompose(save=True)
+    step4_13_check(table)
