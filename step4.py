@@ -1,7 +1,7 @@
 import numpy as np
-from common import load_sift
+from common import load_sift, recall_at_k
 from pathlib import Path
-from graph import reachable_from
+from graph import reachable_from, search_layer
 from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw, save_nsw, load_nsw
 import time
 import pandas as pd
@@ -297,8 +297,77 @@ def step4_8_check_degree(df: pd.DataFrame, Ms: list[int]) -> None:
         assert (d["degree"] >= np.minimum(M, d["insert_pos"])).all()
         print(f"M={M}: 次数の検算 OK")
 
+def step4_9_beam_M_ef(
+        Ms: tuple[int, ...] = (10, 20, 40),
+        efs: tuple[int, ...] = (10, 16, 32, 64, 128, 256),
+        save: bool = True,
+        ) -> pd.DataFrame:  # 変更:確認関数に渡すため df を返す
+    X, Q, GT = load_sift()
+    # 変更:kNN グラフ(full)の読み込みは削除
+
+    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    entries = df2[df2["M"] == 10][["seed", "query", "entry"]]
+
+    d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
+
+    rows = []
+    t0 = time.perf_counter()
+    for M in Ms:
+        # 変更:M ごとに別の NSW グラフを読む(order は使わない)
+        graph, _ = load_nsw(DATA / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        for ef in efs:
+            for r in entries.itertuples():
+                s = search_layer(X, graph, Q[r.query], [int(r.entry)], ef=ef)
+                top1 = s["topk"][0]
+                rows.append({
+                    "M": M, "ef": ef, "seed": r.seed, "query": r.query, "entry": r.entry,
+                    "top1": top1,
+                    "rank_top1": int((d_all[r.query] < d_all[r.query, top1]).sum()) + 1,
+                    "recall1": recall_at_k([top1], GT[r.query], 1),
+                    "recall10": recall_at_k(s["topk"][:10], GT[r.query], 10),
+                    "n_dist": s["n_dist"], "n_expand": s["n_expand"],
+                    "n_topk": len(s["topk"]),
+                })
+            print(f"M={M} ef={ef} 経過 {time.perf_counter() - t0:.1f} 秒")
+
+    df = pd.DataFrame(rows)
+    if save:
+        df.to_csv(RESULTS / "step4_9_beam_M_ef.csv", index=False)  # 変更:保存先
+    else:
+        print(df.groupby(["M", "ef"])[["recall1", "recall10", "n_dist"]].mean())
+    return df  # 変更
+
+def step4_9_check(df: pd.DataFrame) -> None:
+    df3 = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+
+    # 確認2:形が Step 3 と同じ
+    assert len(df) == 9000
+    assert list(df.columns) == list(df3.columns)
+
+    # 確認1:入口が Step 3 と同じ
+    keys = ["M", "ef", "seed", "query"]
+    m = df.merge(df3[keys + ["entry"]], on=keys, suffixes=("", "_3"))
+    assert len(m) == 9000
+    assert (m["entry"] == m["entry_3"]).all()
+
+    # 確認3:W は必ず ef 件で満杯
+    assert (df["n_topk"] == df["ef"]).all()
+
+    # 確認4:同じ点は2回測らない
+    assert (df["n_dist"] <= 10000).all()
+
+    # 確認5:1行を測り直す
+    X, Q, GT = load_sift()
+    graph, _ = load_nsw(DATA / "nsw_sift10k_M10_efc100_seed0.npz")
+    r = df[(df["M"] == 10) & (df["ef"] == 10) & (df["seed"] == 0) & (df["query"] == 0)].iloc[0]
+    s = search_layer(X, graph, Q[0], [int(r["entry"])], ef=10)
+    d = np.linalg.norm(X[s["topk"]] - Q[0], axis=1)
+    assert np.all(np.diff(d) >= 0)    # 近い順に並んでいる
+    assert s["topk"][0] == r["top1"]   # csv の top1 と一致
+    assert s["n_dist"] == r["n_dist"]  # 同じ条件なら同じ回数
+
+    print("4-9 の確認:すべて通過")
 
 if __name__ == "__main__":
-    step4_8_check_small()
-    step4_8_reachable([10, 20, 40], save=True)
-    step4_8_degree([10, 20, 40], save=True)
+    df = step4_9_beam_M_ef()
+    step4_9_check(df)
