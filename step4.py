@@ -1,6 +1,7 @@
 import numpy as np
 from common import load_sift
 from pathlib import Path
+from graph import reachable_from
 from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw, save_nsw, load_nsw
 import time
 import pandas as pd
@@ -238,5 +239,66 @@ def step4_6_check_small_ef(M: int = 10, ef_construction: int = 10, seed: int = 0
     print(df["recall_M"].agg(["mean", "min", "count"]))
     df.to_csv(RESULTS / "step4_6_check_small_ef.csv", index=False)
 
+def step4_8_check_small() -> None:
+    # 4-3 の数直線5点(A=0, B=10, C=4, D=7, E=2, M=2)の NSW
+    graph = [[1, 2, 4], [0, 2, 3], [0, 1, 3, 4], [1, 2], [0, 2]]
+    for e in range(5):
+        r = reachable_from(graph, [e])
+        assert r.shape == (5,)
+        assert r.all(), f"入口 {e} から届かない点がある: {r}"
+    print("4-8 小さいグラフ: どの入口からも5点すべてに届く OK")
+
+def step4_8_reachable(Ms: list[int], save: bool) -> pd.DataFrame:
+    base = Path(__file__).parent
+    df2 = pd.read_csv(base / "results" / "step2_greedy_M_entry.csv")
+    entries = df2[df2["M"] == 10][["seed", "query", "entry"]]  # ← (1) query を残し、drop_duplicates を消す
+    print(f"入口の組: {len(entries)} 行")
+
+    rows = []
+    for M in Ms:
+        graph, order = load_nsw(base / "data" / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        for seed, query, entry in entries.itertuples(index=False):  # ← (2) query も受け取る
+            r = reachable_from(graph, [int(entry)])
+            rows.append({"M": M, "seed": int(seed), "query": int(query),
+                         "entry": int(entry), "n_reachable": int(r.sum())})
+    df = pd.DataFrame(rows)
+    print(df.groupby("M")["n_reachable"].agg(["min", "max", "count"]))  # ← (3) 全行を要約して表示
+    if save:
+        df.to_csv(base / "results" / "step4_8_reachable.csv", index=False)
+    return df
+
+def step4_8_degree(Ms: list[int], save: bool) -> pd.DataFrame:
+    base = Path(__file__).parent
+    rows = []
+    for M in Ms:
+        graph, order = load_nsw(base / "data" / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        n = len(graph)
+        pos = np.empty(n, dtype=int)
+        pos[order] = np.arange(n)  # pos[i] = 点 i を何番目に入れたか(0始まり)
+        for i in range(n):
+            rows.append({"M": M, "point": i, "insert_pos": int(pos[i]),
+                         "degree": len(graph[i])})
+    df = pd.DataFrame(rows)
+    step4_8_check_degree(df, Ms)
+    if save:
+        df.to_csv(base / "results" / "step4_8_degree.csv", index=False)
+    return df
+
+def step4_8_check_degree(df: pd.DataFrame, Ms: list[int]) -> None:
+    for M in Ms:
+        d = df[df["M"] == M]
+        n = len(d)
+        assert n == 10000
+        assert np.array_equal(np.sort(d["insert_pos"].to_numpy()), np.arange(n))
+        assert d["degree"].sum() == expected_degree_sum(n, M)
+        # 最後に入れた点は、自分で張った M 本だけ
+        assert d.loc[d["insert_pos"] == n - 1, "degree"].item() == M
+        # k 番目(0始まり)に入れた点は、自分で min(M, k) 本張っている
+        assert (d["degree"] >= np.minimum(M, d["insert_pos"])).all()
+        print(f"M={M}: 次数の検算 OK")
+
+
 if __name__ == "__main__":
-    step4_5_build_sift()
+    step4_8_check_small()
+    step4_8_reachable([10, 20, 40], save=True)
+    step4_8_degree([10, 20, 40], save=True)

@@ -109,7 +109,7 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
 
 # ゴールにたどり着けるかの確認
 def reachable_from(graph: np.ndarray, entries: list[int]) -> np.ndarray:
-    n = graph.shape[0]
+    n = len(graph)
     visited = np.zeros(n, dtype=bool)
     queue: deque[int] = deque()
 
