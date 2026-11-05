@@ -215,7 +215,36 @@ def step4_11_check(kinds: pd.DataFrame, dist: pd.DataFrame) -> None:
 
     print("4-11 の確認:すべて通過")
 
+def step4_12_summary(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """4-12: 入口グループごとの recall@1・入口の遠さ・stuck と、使った入口の一覧"""
+    df = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+
+    # 1. 入口(k)ごとに100クエリ平均 → グループごとに平均と最小〜最大
+    per_k = (df.groupby(["M", "ef", "group", "k"])
+             .agg(recall1=("recall1", "mean"), recall10=("recall10", "mean"),
+                  entry_rank=("entry_rank", "median"), stuck=("stuck", "mean"),
+                  n_dist=("n_dist", "mean"))
+             .reset_index())
+    summary = (per_k.groupby(["M", "ef", "group"])
+               .agg(recall1=("recall1", "mean"), r1_min=("recall1", "min"), r1_max=("recall1", "max"),
+                    recall10=("recall10", "mean"),
+                    entry_rank=("entry_rank", "median"), stuck=("stuck", "mean"),
+                    n_dist=("n_dist", "mean"))
+               .reset_index())
+    print(summary.round(3).to_string(index=False))
+
+    # 2. ハブと最初の5点の一覧(次数と、何番目に入れた点か)
+    entries = (df[df["group"].isin(["hub", "first"])]
+               .drop_duplicates(["M", "group", "k"])
+               [["M", "group", "k", "entry", "entry_deg", "entry_pos"]]
+               .sort_values(["M", "group", "k"]))
+    print(entries.to_string(index=False))
+
+    if save:
+        summary.to_csv(RESULTS / "step4_12_summary.csv", index=False)
+        entries.to_csv(RESULTS / "step4_12_entries.csv", index=False)
+    return summary, entries
+
 
 if __name__ == "__main__":
-    kinds, width = step4_11_review(save=True)
-    dist = step4_11_hard_queries(save=True)
+    summary, entries = step4_12_summary(save=True)

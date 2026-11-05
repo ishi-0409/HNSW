@@ -368,6 +368,84 @@ def step4_9_check(df: pd.DataFrame) -> None:
 
     print("4-9 の確認:すべて通過")
 
+def step4_12_hub_entry(
+        Ms: tuple[int, ...] = (10, 20, 40),
+        efs: tuple[int, ...] = (1, 10),
+        save: bool = True,
+        ) -> pd.DataFrame:
+    X, Q, GT = load_sift()
+    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    rand = df2[df2["M"] == 10][["seed", "query", "entry"]]
+    d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
+    nq = len(Q)
+
+    rows = []
+    for M in Ms:
+        graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        deg = np.array([len(nb) for nb in graph])
+        pos = np.empty(len(order), dtype=int)
+        pos[order] = np.arange(len(order))  # 点 → 何番目に入れたか
+
+        # (group, k, query, entry) の一覧を作る
+        jobs = [("random", int(r.seed), int(r.query), int(r.entry)) for r in rand.itertuples()]
+        hubs = np.argsort(-deg, kind="stable")[:5]
+        jobs += [("hub", k, q, int(h)) for k, h in enumerate(hubs) for q in range(nq)]
+        jobs += [("first", k, q, int(o)) for k, o in enumerate(order[:5]) for q in range(nq)]
+
+        for ef in efs:
+            for group, k, q, entry in jobs:
+                s = search_layer(X, graph, Q[q], [entry], ef=ef)
+                top1 = s["topk"][0]
+                rows.append({
+                    "M": M, "ef": ef, "group": group, "k": k, "query": q, "entry": entry,
+                    "entry_deg": int(deg[entry]), "entry_pos": int(pos[entry]),
+                    "entry_rank": int((d_all[q] < d_all[q, entry]).sum()) + 1,
+                    "top1": top1,
+                    "rank_top1": int((d_all[q] < d_all[q, top1]).sum()) + 1,
+                    "recall1": recall_at_k([top1], GT[q], 1),
+                    "recall10": recall_at_k(s["topk"][:10], GT[q], 10) if ef >= 10 else np.nan,
+                    "n_dist": s["n_dist"], "n_expand": s["n_expand"],
+                    "stuck": top1 == entry,
+                })
+
+    df = pd.DataFrame(rows)
+    if save:
+        df.to_csv(RESULTS / "step4_12_hub_entry.csv", index=False)
+    else:
+        print(df.groupby(["M", "ef", "group"])[["recall1", "entry_rank", "stuck"]].mean())
+    return df
+
+def step4_12_check(df: pd.DataFrame) -> None:
+    # 確認5:形
+    assert len(df) == 9000
+    assert (df.groupby(["M", "ef", "group"]).size() == 500).all()
+
+    # 確認1:ランダム入口の ef=10 が 4-9 と一致
+    d9 = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")
+    d9 = d9[d9["ef"] == 10]
+    r = df[(df["group"] == "random") & (df["ef"] == 10)].rename(columns={"k": "seed"})
+    m = r.merge(d9, on=["M", "seed", "query"], suffixes=("", "_9"))
+    assert len(m) == 1500
+    assert (m["entry"] == m["entry_9"]).all()
+    assert (m["top1"] == m["top1_9"]).all()
+    assert (m["n_dist"] == m["n_dist_9"]).all()
+
+    # 確認2:k=0 のハブが最大次数の点
+    max_deg = {10: 238, 20: 452, 40: 858}
+    for M, d in max_deg.items():
+        h = df[(df["M"] == M) & (df["group"] == "hub") & (df["k"] == 0)]
+        assert (h["entry_deg"] == d).all()
+
+    # 確認3:最初の5点は挿入順の先頭
+    f = df[df["group"] == "first"]
+    assert set(f["entry_pos"]) == {0, 1, 2, 3, 4}
+
+    # 確認4:ef=1 では stuck と n_expand == 1 が同じ
+    e1 = df[df["ef"] == 1]
+    assert (e1["stuck"] == (e1["n_expand"] == 1)).all()
+
+    print("4-12 の確認:すべて通過")
+
 if __name__ == "__main__":
-    df = step4_9_beam_M_ef()
-    step4_9_check(df)
+    df = step4_12_hub_entry()
+    step4_12_check(df)
