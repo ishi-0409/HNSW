@@ -140,7 +140,82 @@ def step4_10_check(summary: pd.DataFrame) -> None:
 
     print("4-10 の確認:すべて通過")
 
+def step4_11_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """4-11: NSW で far の割合と入口シード間の recall の幅が ef でどう変わるか"""
+    df = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")  # 変更:NSW の csv を読む
+
+    # 1. 一番近い点の本当の順位で4種類に分ける(Step 2-7・3-14 と同じ区切り)
+    df["kind"] = pd.cut(df["rank_top1"], bins=[0, 1, 10, 100, np.inf],
+                        labels=["hit", "near", "mid", "far"])
+    kinds = (pd.crosstab([df["M"], df["ef"]], df["kind"])
+             .reindex(columns=["hit", "near", "mid", "far"], fill_value=0)
+             .reset_index())
+    print(kinds.to_string(index=False))
+
+    # 2. シードごとに100クエリ平均 → 5シードの最小〜最大と幅
+    per_seed = (df.groupby(["M", "ef", "seed"])
+                .agg(recall1=("recall1", "mean"), recall10=("recall10", "mean"))
+                .reset_index())
+    width = (per_seed.groupby(["M", "ef"])
+             .agg(r1_min=("recall1", "min"), r1_max=("recall1", "max"),
+                  r10_min=("recall10", "min"), r10_max=("recall10", "max"))
+             .reset_index())
+    width["r1_width"] = width["r1_max"] - width["r1_min"]
+    width["r10_width"] = width["r10_max"] - width["r10_min"]
+    print(width.round(3).to_string(index=False))
+
+    if save:
+        kinds.to_csv(RESULTS / "step4_11_kinds.csv", index=False)  # 変更:保存先
+        width.to_csv(RESULTS / "step4_11_seed_width.csv", index=False)  # 変更:保存先
+    return kinds, width
+
+def step4_11_hard_queries(save: bool) -> pd.DataFrame:
+    """4-11 NSW でクエリごとに、5入口中何回 far だったかを数える"""
+    df = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")  # 変更:NSW の csv を読む
+    df["far"] = df["rank_top1"] > 100
+
+    # (M, ef, クエリ) ごとに far の回数(0〜5)
+    per_q = (df.groupby(["M", "ef", "query"])["far"].sum()
+             .reset_index(name="n_far"))
+
+    # (M, ef) ごとに、far 0回・1回・…・5回のクエリがそれぞれ何個あるか
+    dist = (pd.crosstab([per_q["M"], per_q["ef"]], per_q["n_far"])
+            .reindex(columns=range(6), fill_value=0)
+            .reset_index())
+    print(dist.to_string(index=False))
+
+    if save:
+        per_q.to_csv(RESULTS / "step4_11_far_per_query.csv", index=False)  # 変更:保存先
+        dist.to_csv(RESULTS / "step4_11_far_dist.csv", index=False)  # 変更:保存先
+    return dist
+
+def step4_11_check(kinds: pd.DataFrame, dist: pd.DataFrame) -> None:
+    s = pd.read_csv(RESULTS / "step4_10_summary.csv")
+    s = s[s["graph"] == "nsw"]
+
+    # 確認1:各 (M, ef) で4種類の合計が 500
+    assert len(kinds) == 18
+    assert (kinds[["hit", "near", "mid", "far"]].sum(axis=1) == 500).all()
+
+    # 確認2:hit ÷ 500 が 4-10 の recall@1 と一致
+    m = kinds.merge(s, on=["M", "ef"])
+    assert len(m) == 18
+    assert np.allclose(m["hit"] / 500, m["recall1"])
+
+    # 確認3:クエリごとの表は各行の合計が 100、far の回数 × 個数の合計が far の総数
+    cols = list(range(6))
+    assert len(dist) == 18
+    assert (dist[cols].sum(axis=1) == 100).all()
+    m2 = dist.merge(kinds[["M", "ef", "far"]], on=["M", "ef"])
+    assert ((m2[cols] * np.arange(6)).sum(axis=1) == m2["far"]).all()
+
+    # 確認4:NSW M=10・ef=256 はすべて hit
+    row = kinds[(kinds["M"] == 10) & (kinds["ef"] == 256)].iloc[0]
+    assert row["hit"] == 500
+
+    print("4-11 の確認:すべて通過")
+
 
 if __name__ == "__main__":
-    summary = step4_10_curve(save=True)
-    step4_10_check(summary)
+    kinds, width = step4_11_review(save=True)
+    dist = step4_11_hard_queries(save=True)
