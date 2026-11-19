@@ -446,6 +446,66 @@ def step4_12_check(df: pd.DataFrame) -> None:
 
     print("4-12 の確認:すべて通過")
 
+def edge_lengths(X: np.ndarray, graph: list[list[int]], p: int) -> np.ndarray:
+    """点 p から近所までの距離を、graph[p] の順に返す"""
+    nb = np.array(graph[p])
+    return np.linalg.norm(X[nb] - X[p], axis=1)
+
+def step4_14_check_small() -> None:
+    """4-3 の数直線5点(A=0, B=10, C=4, D=7, E=2)で手計算と比べる"""
+    X = np.array([[0.0], [10.0], [4.0], [7.0], [2.0]])
+    graph = [[1, 2, 4], [0, 2, 3], [0, 1, 3, 4], [1, 2], [0, 2]]
+    d = edge_lengths(X, graph, 0)  # A の近所は B, C, E
+    assert np.allclose(d, [10, 4, 2])
+    assert np.isclose(d.mean(), 16 / 3) and np.isclose(d.max(), 10)
+    d = edge_lengths(X, graph, 2)  # C の近所は A, B, D, E
+    assert np.allclose(d, [4, 6, 3, 2])
+    print("4-14 数直線の確認 OK")
+
+def step4_14_edge_length(Ms: list[int], save: bool) -> pd.DataFrame:
+    X, _, _ = load_sift()
+    hub = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+    rows = []
+    for M in Ms:
+        graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        pos = np.empty(len(order), dtype=int)
+        pos[order] = np.arange(len(order))  # 点の番号 → 何番目に入れたか
+        sub = hub[(hub["M"] == M) & (hub["ef"] == 1)]  # 入口は ef=1 と ef=10 で同じ
+        groups = {g: np.unique(s["entry"]) for g, s in sub.groupby("group")}
+        groups["all"] = np.arange(len(graph))  # 基準:全点
+        for g, entries in groups.items():
+            for e in entries:
+                e = int(e)
+                d = edge_lengths(X, graph, e)
+                rows.append({
+                    "M": M, "group": g, "entry": e,
+                    "degree": len(graph[e]), "insert_pos": int(pos[e]),
+                    "mean_len": d.mean(), "median_len": np.median(d), "max_len": d.max(),
+                })
+    df = pd.DataFrame(rows)
+    if save:
+        df.to_csv(RESULTS / "step4_14_edge_length.csv", index=False)
+    return df
+
+def step4_14_check(df: pd.DataFrame) -> None:
+    hub = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+    ent = hub[["M", "group", "entry", "entry_deg", "entry_pos"]].drop_duplicates()
+    for M, sub in df.groupby("M"):
+        # 全点:10000 行、次数の合計が理論値と一致
+        all_rows = sub[sub["group"] == "all"]
+        assert len(all_rows) == 10000
+        assert all_rows["degree"].sum() == expected_degree_sum(10000, M)
+        # 3グループ:4-12 の入口と同じ点で、次数・挿入順も一致
+        rest = sub[sub["group"] != "all"]
+        e = ent[ent["M"] == M]
+        m = rest.merge(e, on=["M", "group", "entry"])
+        assert len(m) == len(rest) == len(e)
+        assert (m["degree"] == m["entry_deg"]).all()
+        assert (m["insert_pos"] == m["entry_pos"]).all()
+        print(f"M={M}", rest.groupby("group").size().to_dict())
+    assert (df["mean_len"] <= df["max_len"]).all()
+    print("4-14 確認 OK")
+    
 if __name__ == "__main__":
     df = step4_12_hub_entry()
     step4_12_check(df)

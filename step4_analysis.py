@@ -293,6 +293,30 @@ def step4_13_check(table: pd.DataFrame) -> None:
 
     print("4-13 の確認:すべて通過")
 
+def step4_14_summary(save: bool) -> pd.DataFrame:
+    df = pd.read_csv(RESULTS / "step4_14_edge_length.csv")
+    t = (
+        df.groupby(["M", "group"])
+        .agg(
+            n=("entry", "size"),
+            degree=("degree", "mean"),
+            mean_len=("mean_len", "mean"),
+            mean_len_min=("mean_len", "min"),
+            mean_len_max=("mean_len", "max"),
+            max_len=("max_len", "mean"),
+            max_len_min=("max_len", "min"),
+            max_len_max=("max_len", "max"),
+        )
+        .reset_index()
+    )
+    base = t[t["group"] == "all"].set_index("M")  # 基準:全点
+    t["mean_ratio"] = t["mean_len"] / t["M"].map(base["mean_len"])
+    t["max_ratio"] = t["max_len"] / t["M"].map(base["max_len"])
+    if save:
+        t.to_csv(RESULTS / "step4_14_summary.csv", index=False)
+    print(t.round(3).to_string())
+    return t
+
 if __name__ == "__main__":
     table = step4_13_decompose(save=True)
     step4_13_check(table)
