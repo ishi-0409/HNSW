@@ -317,6 +317,42 @@ def step4_14_summary(save: bool) -> pd.DataFrame:
     print(t.round(3).to_string())
     return t
 
+def step4_15_summary(save: bool) -> pd.DataFrame:
+    """4-15: per_expand を「調べた点の次数の平均 × 新しかった割合」に分ける"""
+    df = pd.read_csv(RESULTS / "step4_15_deg_sum.csv")
+    table = (df.groupby(["graph", "M", "ef"])
+             .agg(n_dist=("n_dist", "mean"), n_expand=("n_expand", "mean"),
+                  deg_sum=("deg_sum", "mean"))
+             .reset_index())
+    # 4-13 と同じく平均どうしの比にする(per_expand = deg_mean × new_ratio がちょうど成り立つ)
+    table["per_expand"] = (table["n_dist"] - 1) / table["n_expand"]
+    table["deg_mean"] = table["deg_sum"] / table["n_expand"]
+    table["new_ratio"] = (table["n_dist"] - 1) / table["deg_sum"]
+
+    # kNN M=20 を 1 としたときの倍率
+    base = table[table["graph"] == "knn"].iloc[0]
+    for c in ["per_expand", "deg_mean", "new_ratio"]:
+        table[c + "_vs_knn"] = table[c] / base[c]
+
+    print(table.round(3).to_string(index=False))
+    if save:
+        table.to_csv(RESULTS / "step4_15_summary.csv", index=False)
+    return table
+
+def step4_15_summary_check(table: pd.DataFrame) -> None:
+    assert len(table) == 2
+    # 確認1:per_expand = deg_mean × new_ratio
+    assert np.allclose(table["per_expand"], table["deg_mean"] * table["new_ratio"])
+    # 確認2:per_expand が 4-13 と一致
+    d13 = pd.read_csv(RESULTS / "step4_13_decompose.csv")
+    m = table.merge(d13[["graph", "M", "ef", "per_expand"]],
+                    on=["graph", "M", "ef"], suffixes=("", "_13"))
+    assert len(m) == 2
+    assert np.allclose(m["per_expand"], m["per_expand_13"])
+    # 確認3:kNN は全点の次数が 20
+    assert np.isclose(table.loc[table["graph"] == "knn", "deg_mean"].iloc[0], 20)
+    print("4-15 分析の確認 OK")
+
 if __name__ == "__main__":
-    table = step4_13_decompose(save=True)
-    step4_13_check(table)
+    table = step4_15_summary(save=True)
+    step4_15_summary_check(table)

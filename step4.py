@@ -505,7 +505,64 @@ def step4_14_check(df: pd.DataFrame) -> None:
         print(f"M={M}", rest.groupby("group").size().to_dict())
     assert (df["mean_len"] <= df["max_len"]).all()
     print("4-14 確認 OK")
-    
+
+def step4_15_check_small() -> None:
+    """4-3 の数直線5点で、deg_sum を手計算と比べる(q=8、入口 A、ef=2)"""
+    X = np.array([[0.0], [10.0], [4.0], [7.0], [2.0]])
+    graph = [[1, 2, 4], [0, 2, 3], [0, 1, 3, 4], [1, 2], [0, 2]]
+    s = search_layer(X, graph, np.array([8.0]), [0], ef=2)
+    assert s["topk"] == [3, 1]            # D, B
+    assert s["n_expand"] == 3             # A, B, D を調べる(C は調べる前に止まる)
+    assert s["deg_sum"] == 3 + 3 + 2      # A, B, D の次数
+    assert s["n_dist"] == 1 + 3 + 1 + 0   # 入口 + A で3点 + B で1点 + D で0点
+    print("4-15 数直線の確認 OK")
+
+def step4_15_deg_sum(ef: int = 64, save: bool = True) -> pd.DataFrame:
+    X, Q, _ = load_sift()
+    knn = np.load(DATA / "knn_sift10k_M40.npy")[:, :20]
+    nsw, _ = load_nsw(DATA / "nsw_sift10k_M10_efc100_seed0.npz")
+    graphs = {("knn", 20): knn, ("nsw", 10): nsw}  # 平均次数はどちらも約20
+
+    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    entries = df2[df2["M"] == 10][["seed", "query", "entry"]]
+
+    rows = []
+    for (name, M), graph in graphs.items():
+        for r in entries.itertuples():
+            s = search_layer(X, graph, Q[r.query], [int(r.entry)], ef=ef)
+            rows.append({
+                "graph": name, "M": M, "ef": ef,
+                "seed": r.seed, "query": r.query, "entry": r.entry,
+                "top1": s["topk"][0],
+                "n_dist": s["n_dist"], "n_expand": s["n_expand"], "deg_sum": s["deg_sum"],
+            })
+    df = pd.DataFrame(rows)
+    if save:
+        df.to_csv(RESULTS / "step4_15_deg_sum.csv", index=False)
+    return df
+
+def step4_15_check(df: pd.DataFrame) -> None:
+    assert len(df) == 1000
+
+    # 確認1:kNN は全点の次数が 20 なので、deg_sum = 20 × n_expand
+    k = df[df["graph"] == "knn"]
+    assert (k["deg_sum"] == 20 * k["n_expand"]).all()
+
+    # 確認2:探索の動きが変わっていない(3-10・4-9 の csv と一致)
+    keys = ["M", "ef", "seed", "query"]
+    for name, path in [("knn", "step3_beam_M_ef.csv"), ("nsw", "step4_9_beam_M_ef.csv")]:
+        old = pd.read_csv(RESULTS / path)
+        m = df[df["graph"] == name].merge(old, on=keys, suffixes=("", "_old"))
+        assert len(m) == 500
+        for c in ["entry", "top1", "n_dist", "n_expand"]:
+            assert (m[c] == m[c + "_old"]).all(), f"{name} の {c} が一致しない"
+
+    # 確認3:新しく測った数は、調べた点の近所の合計を超えない
+    assert (df["n_dist"] - 1 <= df["deg_sum"]).all()
+
+    print("4-15 確認 OK")
+
+
 if __name__ == "__main__":
-    df = step4_12_hub_entry()
-    step4_12_check(df)
+    df = step4_15_deg_sum(save=True)
+    step4_15_check(df)
