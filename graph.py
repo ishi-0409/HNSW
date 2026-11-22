@@ -5,10 +5,11 @@ from collections import deque
 from typing import TypedDict
 
 class SearchResult(TypedDict):
-    topk: list[int]     # 近い順の点番号
-    n_dist: int         # 距離計算回数
-    n_expand: int       # 近所を調べた点の数
-
+    topk: list[int]  # 近い順の点番号   
+    n_dist: int      # 距離計算回数
+    n_expand: int    # 近所を調べた点の数
+    deg_sum: int     # 調べた点の次数の合計
+    
 # knnグラフ構築
 def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
     N = len(X)
@@ -65,6 +66,7 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
         topk: クエリに近い順の点番号(list[int])
         n_dist: 距離計算回数(int)
         n_expand: 近所を調べた点の数(int)
+        deg_sum: 調べた点の次数の合計(int)
     """
     
     d0 = np.linalg.norm(X[entries] - q, axis=1)
@@ -77,12 +79,14 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
 
     # ループの停止判断
     n_expand = 0
+    deg_sum = 0
     while C:
         d_c, c = heapq.heappop(C)
         d_f = -W[0][0]
         if d_c > d_f:
             break
         n_expand += 1
+        deg_sum += len(graph[c])
 
         # cの近所のうち未計測の点だけ距離を計算する
         ids = [int(e) for e in graph[c] if e not in visited]
@@ -104,8 +108,7 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
     #探索済みWのリストを距離が近い順にソートする
     topk = [int(e) for _, e in sorted((-neg_d, e) for neg_d, e in W)]
 
-
-    return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand}
+    return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand, "deg_sum": deg_sum}
 
 # ゴールにたどり着けるかの確認
 def reachable_from(graph: np.ndarray, entries: list[int]) -> np.ndarray:
