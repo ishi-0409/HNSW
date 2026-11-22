@@ -4,13 +4,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-BASE = Path(__file__).parent
-RESULTS = BASE / "results"
+from common import result_path
+
 
 
 def step4_8_summary(save: bool) -> pd.DataFrame:
-    reach = pd.read_csv(RESULTS / "step4_8_reachable.csv")
-    deg = pd.read_csv(RESULTS / "step4_8_degree.csv")
+    reach = pd.read_csv(result_path("step4_8_reachable.csv"))
+    deg = pd.read_csv(result_path("step4_8_degree.csv"))
 
     rows = []
     for M, d in deg.groupby("M"):
@@ -47,8 +47,8 @@ def step4_8_summary(save: bool) -> pd.DataFrame:
     fig.tight_layout()
 
     if save:
-        summary.to_csv(RESULTS / "step4_8_summary.csv", index=False)
-        fig.savefig(RESULTS / "step4_8_degree.png", dpi=150)
+        summary.to_csv(result_path("step4_8_summary.csv"), index=False)
+        fig.savefig(result_path("step4_8_degree.png"), dpi=150)
     return summary
 
 def interp_recall(sub: pd.DataFrame, x: float) -> float:
@@ -63,8 +63,8 @@ def interp_recall(sub: pd.DataFrame, x: float) -> float:
 
 
 def step4_10_curve(save: bool = True) -> pd.DataFrame:
-    knn = pd.read_csv(RESULTS / "step3_beam_M_ef.csv").assign(graph="knn")
-    nsw = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv").assign(graph="nsw")
+    knn = pd.read_csv(result_path("step3_beam_M_ef.csv")).assign(graph="knn")
+    nsw = pd.read_csv(result_path("step4_9_beam_M_ef.csv")).assign(graph="nsw")
     df = pd.concat([knn, nsw], ignore_index=True)
 
     # 集計表:graph × M × ef ごとの平均
@@ -102,9 +102,9 @@ def step4_10_curve(save: bool = True) -> pd.DataFrame:
     print(interp.pivot(index="n_dist", columns=["graph", "M"], values="recall10").round(3))
 
     if save:
-        summary.to_csv(RESULTS / "step4_10_summary.csv", index=False)
-        interp.to_csv(RESULTS / "step4_10_interp.csv", index=False)
-        fig.savefig(RESULTS / "step4_10_recall_vs_ndist.png", dpi=150)
+        summary.to_csv(result_path("step4_10_summary.csv"), index=False)
+        interp.to_csv(result_path("step4_10_interp.csv"), index=False)
+        fig.savefig(result_path("step4_10_recall_vs_ndist.png"), dpi=150)
     plt.close(fig)
  
     return summary
@@ -115,14 +115,14 @@ def step4_10_check(summary: pd.DataFrame) -> None:
     assert (summary["n_rows"] == 500).all()
 
     # 確認2:kNN 側が Step 3 の集計と一致
-    s3 = pd.read_csv(RESULTS / "step3_12_summary.csv")
+    s3 = pd.read_csv(result_path("step3_12_summary.csv"))
     knn = summary[summary["graph"] == "knn"].merge(s3, on=["M", "ef"], suffixes=("", "_3"))
     assert len(knn) == 18
     for col in ["recall10", "recall1", "n_dist"]:
         assert np.allclose(knn[col], knn[col + "_3"])
 
     # 確認3:NSW の1行を別に計算
-    raw = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")
+    raw = pd.read_csv(result_path("step4_9_beam_M_ef.csv"))
     one = raw[(raw["M"] == 10) & (raw["ef"] == 10)]
     row = summary[(summary["graph"] == "nsw") & (summary["M"] == 10) & (summary["ef"] == 10)].iloc[0]
     assert len(one) == 500
@@ -142,7 +142,7 @@ def step4_10_check(summary: pd.DataFrame) -> None:
 
 def step4_11_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     """4-11: NSW で far の割合と入口シード間の recall の幅が ef でどう変わるか"""
-    df = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")  # 変更:NSW の csv を読む
+    df = pd.read_csv(result_path("step4_9_beam_M_ef.csv"))  # 変更:NSW の csv を読む
 
     # 1. 一番近い点の本当の順位で4種類に分ける(Step 2-7・3-14 と同じ区切り)
     df["kind"] = pd.cut(df["rank_top1"], bins=[0, 1, 10, 100, np.inf],
@@ -165,13 +165,13 @@ def step4_11_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     print(width.round(3).to_string(index=False))
 
     if save:
-        kinds.to_csv(RESULTS / "step4_11_kinds.csv", index=False)  # 変更:保存先
-        width.to_csv(RESULTS / "step4_11_seed_width.csv", index=False)  # 変更:保存先
+        kinds.to_csv(result_path("step4_11_kinds.csv"), index=False)  # 変更:保存先
+        width.to_csv(result_path("step4_11_seed_width.csv"), index=False)  # 変更:保存先
     return kinds, width
 
 def step4_11_hard_queries(save: bool) -> pd.DataFrame:
     """4-11 NSW でクエリごとに、5入口中何回 far だったかを数える"""
-    df = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")  # 変更:NSW の csv を読む
+    df = pd.read_csv(result_path("step4_9_beam_M_ef.csv"))  # 変更:NSW の csv を読む
     df["far"] = df["rank_top1"] > 100
 
     # (M, ef, クエリ) ごとに far の回数(0〜5)
@@ -185,12 +185,12 @@ def step4_11_hard_queries(save: bool) -> pd.DataFrame:
     print(dist.to_string(index=False))
 
     if save:
-        per_q.to_csv(RESULTS / "step4_11_far_per_query.csv", index=False)  # 変更:保存先
-        dist.to_csv(RESULTS / "step4_11_far_dist.csv", index=False)  # 変更:保存先
+        per_q.to_csv(result_path("step4_11_far_per_query.csv"), index=False)  # 変更:保存先
+        dist.to_csv(result_path("step4_11_far_dist.csv"), index=False)  # 変更:保存先
     return dist
 
 def step4_11_check(kinds: pd.DataFrame, dist: pd.DataFrame) -> None:
-    s = pd.read_csv(RESULTS / "step4_10_summary.csv")
+    s = pd.read_csv(result_path("step4_10_summary.csv"))
     s = s[s["graph"] == "nsw"]
 
     # 確認1:各 (M, ef) で4種類の合計が 500
@@ -217,7 +217,7 @@ def step4_11_check(kinds: pd.DataFrame, dist: pd.DataFrame) -> None:
 
 def step4_12_summary(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     """4-12: 入口グループごとの recall@1・入口の遠さ・stuck と、使った入口の一覧"""
-    df = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+    df = pd.read_csv(result_path("step4_12_hub_entry.csv"))
 
     # 1. 入口(k)ごとに100クエリ平均 → グループごとに平均と最小〜最大
     per_k = (df.groupby(["M", "ef", "group", "k"])
@@ -241,14 +241,14 @@ def step4_12_summary(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     print(entries.to_string(index=False))
 
     if save:
-        summary.to_csv(RESULTS / "step4_12_summary.csv", index=False)
-        entries.to_csv(RESULTS / "step4_12_entries.csv", index=False)
+        summary.to_csv(result_path("step4_12_summary.csv"), index=False)
+        entries.to_csv(result_path("step4_12_entries.csv"), index=False)
     return summary, entries
 
 def step4_13_decompose(save: bool) -> pd.DataFrame:
     """4-13: 距離計算回数を「調べた点の数」と「1点あたりに新しく測った数」に分ける"""
-    knn = pd.read_csv(RESULTS / "step3_beam_M_ef.csv").assign(graph="knn")
-    nsw = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv").assign(graph="nsw")
+    knn = pd.read_csv(result_path("step3_beam_M_ef.csv")).assign(graph="knn")
+    nsw = pd.read_csv(result_path("step4_9_beam_M_ef.csv")).assign(graph="nsw")
     df = pd.concat([knn, nsw], ignore_index=True)
 
     table = (df.groupby(["graph", "M", "ef"])
@@ -258,7 +258,7 @@ def step4_13_decompose(save: bool) -> pd.DataFrame:
     table["per_expand"] = (table["n_dist"] - 1) / table["n_expand"]
 
     # 比べる基準:平均次数(kNN はちょうど M、NSW は 4-8 の次数の csv から)
-    deg = pd.read_csv(RESULTS / "step4_8_degree.csv")
+    deg = pd.read_csv(result_path("step4_8_degree.csv"))
     nsw_deg = deg.groupby("M")["degree"].agg(["mean", "max"]).reset_index()
     nsw_deg.columns = ["M", "avg_degree", "max_degree"]
     table = table.merge(nsw_deg, on="M", how="left")
@@ -269,13 +269,13 @@ def step4_13_decompose(save: bool) -> pd.DataFrame:
 
     print(table.round(3).to_string(index=False))
     if save:
-        table.to_csv(RESULTS / "step4_13_decompose.csv", index=False)
+        table.to_csv(result_path("step4_13_decompose.csv"), index=False)
     return table
 
 def step4_13_check(table: pd.DataFrame) -> None:
     # 確認1:形と、n_dist が 4-10 と一致
     assert len(table) == 36
-    s10 = pd.read_csv(RESULTS / "step4_10_summary.csv")
+    s10 = pd.read_csv(result_path("step4_10_summary.csv"))
     m = table.merge(s10, on=["graph", "M", "ef"], suffixes=("", "_10"))
     assert len(m) == 36
     assert np.allclose(m["n_dist"], m["n_dist_10"])
@@ -294,7 +294,7 @@ def step4_13_check(table: pd.DataFrame) -> None:
     print("4-13 の確認:すべて通過")
 
 def step4_14_summary(save: bool) -> pd.DataFrame:
-    df = pd.read_csv(RESULTS / "step4_14_edge_length.csv")
+    df = pd.read_csv(result_path("step4_14_edge_length.csv"))
     t = (
         df.groupby(["M", "group"])
         .agg(
@@ -313,13 +313,13 @@ def step4_14_summary(save: bool) -> pd.DataFrame:
     t["mean_ratio"] = t["mean_len"] / t["M"].map(base["mean_len"])
     t["max_ratio"] = t["max_len"] / t["M"].map(base["max_len"])
     if save:
-        t.to_csv(RESULTS / "step4_14_summary.csv", index=False)
+        t.to_csv(result_path("step4_14_summary.csv"), index=False)
     print(t.round(3).to_string())
     return t
 
 def step4_15_summary(save: bool) -> pd.DataFrame:
     """4-15: per_expand を「調べた点の次数の平均 × 新しかった割合」に分ける"""
-    df = pd.read_csv(RESULTS / "step4_15_deg_sum.csv")
+    df = pd.read_csv(result_path("step4_15_deg_sum.csv"))
     table = (df.groupby(["graph", "M", "ef"])
              .agg(n_dist=("n_dist", "mean"), n_expand=("n_expand", "mean"),
                   deg_sum=("deg_sum", "mean"))
@@ -336,7 +336,7 @@ def step4_15_summary(save: bool) -> pd.DataFrame:
 
     print(table.round(3).to_string(index=False))
     if save:
-        table.to_csv(RESULTS / "step4_15_summary.csv", index=False)
+        table.to_csv(result_path("step4_15_summary.csv"), index=False)
     return table
 
 def step4_15_summary_check(table: pd.DataFrame) -> None:
@@ -344,7 +344,7 @@ def step4_15_summary_check(table: pd.DataFrame) -> None:
     # 確認1:per_expand = deg_mean × new_ratio
     assert np.allclose(table["per_expand"], table["deg_mean"] * table["new_ratio"])
     # 確認2:per_expand が 4-13 と一致
-    d13 = pd.read_csv(RESULTS / "step4_13_decompose.csv")
+    d13 = pd.read_csv(result_path("step4_13_decompose.csv"))
     m = table.merge(d13[["graph", "M", "ef", "per_expand"]],
                     on=["graph", "M", "ef"], suffixes=("", "_13"))
     assert len(m) == 2

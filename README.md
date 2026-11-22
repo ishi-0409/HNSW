@@ -48,20 +48,19 @@ hnsw-thesis/
 ├── README.md             # 動かし方と実験の記録
 ├── siftsmall/            # ダウンロードした SIFT10K（中身は変更しない）
 ├── data/                 # 自分で生成したデータ・正解・グラフ（.npy、git に入れない）
-├── results/              # 計測結果（csv）と図（png）
+├── results/              # 計測結果（csv）と図（png）。Step ごとのフォルダ（step1/ 〜）に分ける
 ├── common.py             # 全 Step で使う関数（読み込み、データ生成、全探索、recall）
 ├── graph.py              # Step 2・3（kNN グラフ、貪欲法、ビーム探索）
 ├── nsw.py                # Step 4
 ├── hnsw.py               # Step 5
 ├── step0.py              # Step 0 の確認コード
-├── step1.py              # Step 1 の確認コード
-└── _old/                 # 整理前のファイル
+└── step1.py              # Step 1 の確認コード
 ```
 
 ## 実験の記録
 
 | 日付 | 実験 | 概要 | 結果 |
 |------|------|------|------|
-| 2026-10-22 | Step 1 全探索の基準値 | SIFT10K と一様乱数(d=32)で全探索の速さを測定(k=10、5回の中央値) | SIFT10K 4.49 ms/クエリ(約223 QPS)、一様乱数 1.36 ms/クエリ(約734 QPS)。詳細は results/step1_brute_force.csv |
+| 2026-10-22 | Step 1 全探索の基準値 | SIFT10K と一様乱数(d=32)で全探索の速さを測定(k=10、5回の中央値) | SIFT10K 4.49 ms/クエリ(約223 QPS)、一様乱数 1.36 ms/クエリ(約734 QPS)。詳細は results/step1/step1_brute_force.csv |
 
 計測環境: 12th Gen Intel(R) Core(TM) i5-1235U / Windows 11 Pro (10.0.26300) / Python 3.14.7 / NumPy 2.5.3

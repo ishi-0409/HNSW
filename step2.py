@@ -4,12 +4,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from common import load_sift, brute_force, recall_at_k
+from common import load_sift, brute_force, recall_at_k, result_path
 from graph import build_knn_graph, greedy_search
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
-RESULTS = ROOT / "results"
 
 M_MAX = 40
 GRAPH_PATH = DATA / f"knn_sift10k_M{M_MAX}.npy"
@@ -52,7 +51,7 @@ def step2_2_indegree() -> None:
         rows.append([M, (indeg == 0).sum(), int(indeg.max()), indeg.max() / M])
 
     # csvで保存
-    with open(RESULTS / "step2_indegree.csv", "w", newline="") as f:
+    with open(result_path("step2_indegree.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["M", "indeg_zero", "indeg_max", "max_over_M"])
         w.writerows(rows)
@@ -100,7 +99,7 @@ def step2_5_greedy_entry0() -> None:
     print("距離計算 :", arr[:, 3].mean())
     print("ホップ数 :", arr[:, 4].mean())
 
-    with open(RESULTS / "step2_greedy_M10_entry0.csv", "w", newline="") as f:
+    with open(result_path("step2_greedy_M10_entry0.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["query", "recall1", "recall10", "n_dist", "hops", "n_topk"])
         w.writerows(rows)
@@ -133,7 +132,7 @@ def step2_6_greedy_M_entry() -> None:
                     "d_true1": np.linalg.norm(X[GT[i, 0]] - q),
                 })
 
-    pd.DataFrame(rows).to_csv(RESULTS / "step2_greedy_M_entry.csv", index=False)
+    pd.DataFrame(rows).to_csv(result_path("step2_greedy_M_entry.csv"), index=False)
 
 # ---- 2-8: 入口を入次数上位5点に固定して計測 ----
 def step2_8_hub_entry():
@@ -159,7 +158,7 @@ def step2_8_hub_entry():
                     "d_stop": np.linalg.norm(X[r["stop"]] - q),
                     "d_true1": np.linalg.norm(X[GT[i, 0]] - q), 
                 })
-    pd.DataFrame(rows).to_csv(RESULTS / "step2_greedy_hub_entry.csv", index=False)
+    pd.DataFrame(rows).to_csv(result_path("step2_greedy_hub_entry.csv"), index=False)
 
 
 if __name__ == "__main__":

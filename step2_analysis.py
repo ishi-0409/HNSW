@@ -4,11 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from common import load_sift
+from common import load_sift, result_path
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
-RESULTS = ROOT / "results"
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
@@ -16,7 +15,7 @@ pd.set_option("display.width", 200)
 
 # ---- 2-6: M ごとの平均・最小・最大と、距離計算回数の上限の検算 ----
 def step2_6_summary() -> None:
-    df = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    df = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     print(len(df))
 
     cols = ["recall1", "recall10", "n_dist", "hops", "n_topk"]
@@ -30,13 +29,13 @@ def step2_6_summary() -> None:
 
     # 2段の列名を recall1_mean のように1段にして保存
     summary.columns = [f"{c}_{s}" for c, s in summary.columns]
-    summary.to_csv(RESULTS / "step2_6_summary.csv")
+    summary.to_csv(result_path("step2_6_summary.csv"))
 
 
 # ---- 2-7: 順位や入次数の列を足して保存 ----
 def step2_7_add_columns() -> pd.DataFrame:
     X, Q, GT = load_sift()
-    df = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    df = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     full = np.load(DATA / "knn_sift10k_M40.npy")
 
     # クエリごとに全点の距離計算
@@ -81,7 +80,7 @@ def step2_7_add_columns() -> pd.DataFrame:
         lambda s: pd.qcut(s, 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop")
     )
 
-    df.to_csv(RESULTS / "step2_local_minima.csv", index=False)
+    df.to_csv(result_path("step2_local_minima.csv"), index=False)
     return df
 
 
@@ -101,7 +100,7 @@ def step2_7_miss_summary(df: pd.DataFrame) -> None:
         "recall10>0": m["recall10"].apply(lambda r: (r > 0).mean()),
     })
     print(summary.round(3))
-    summary.to_csv(RESULTS / "step2_7_miss_summary.csv")
+    summary.to_csv(result_path("step2_7_miss_summary.csv"))
 
 
 # ---- 2-7: 外れたときの順位のヒストグラム ----
@@ -117,7 +116,7 @@ def step2_7_hist(df: pd.DataFrame) -> None:
         ax.set_xlabel("rank of stop point")
     axes[0].set_ylabel("n_miss")
     plt.tight_layout()
-    plt.savefig(RESULTS / "step2_miss_rank_hist.png", dpi=150)
+    plt.savefig(result_path("step2_miss_rank_hist.png"), dpi=150)
     plt.close(fig)
 
 
@@ -130,36 +129,36 @@ def step2_7_indeg(df: pd.DataFrame) -> None:
     # 種類ごとの止まった点の入次数
     a = df.groupby(["M", "kind"], observed=True)["stop_indeg"].agg(["size", "median", "mean"])
     print(a.round(1))
-    a.to_csv(RESULTS / "step2_7_stop_indeg_by_kind.csv")
+    a.to_csv(result_path("step2_7_stop_indeg_by_kind.csv"))
 
     # データ全体の入次数
     rows = []
     for M in sorted(indeg):
         print(M, "全体の中央値:", np.median(indeg[M]), "全体の平均:", indeg[M].mean())
         rows.append({"M": M, "indeg_median": np.median(indeg[M]), "indeg_mean": indeg[M].mean()})
-    pd.DataFrame(rows).to_csv(RESULTS / "step2_7_indeg_overall.csv", index=False)
+    pd.DataFrame(rows).to_csv(result_path("step2_7_indeg_overall.csv"), index=False)
 
     # 真の1位が反ハブかで当たる割合を比べる
     b = df.groupby(["M", "true1_anti"])["recall1"].agg(["size", "mean"])
     print(b.round(3))
-    b.to_csv(RESULTS / "step2_7_true1_anti.csv")
+    b.to_csv(result_path("step2_7_true1_anti.csv"))
 
     # 真の1位の入次数の4分位ごとに当たる割合を比べる
     c = df.groupby(["M", "true1_q"], observed=True)["recall1"].agg(["size", "mean"])
     print(c.round(3))
-    c.to_csv(RESULTS / "step2_7_true1_quartile.csv")
+    c.to_csv(result_path("step2_7_true1_quartile.csv"))
 
 
 # ---- 2-7: 入口からどれだけ近づいたか ----
 def step2_7_entry(df: pd.DataFrame) -> None:
     e = df.groupby(["M", "kind"], observed=True)[["entry_rank", "rank", "improve"]].median()
     print(e.round(1))
-    e.to_csv(RESULTS / "step2_7_entry_rank.csv")
+    e.to_csv(result_path("step2_7_entry_rank.csv"))
 
 # ---- 2-8: ハブ入口とランダム入口(2-6)の比較 ----
 def step2_8_summary():
-    hub = pd.read_csv(RESULTS / "step2_greedy_hub_entry.csv")
-    rnd = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    hub = pd.read_csv(result_path("step2_greedy_hub_entry.csv"))
+    rnd = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     cols = ["recall1", "recall10", "n_dist", "hops"]
     out = {}
     for name, df, key in [("hub", hub, "hub_rank"), ("random", rnd, "seed")]:
@@ -167,7 +166,7 @@ def step2_8_summary():
         out[name] = per.groupby("M").agg(["mean", "min", "max"])
     summary = pd.concat(out, names=["entry"]).round(3)
     print(summary)
-    summary.to_csv(RESULTS / "step2_8_summary.csv")
+    summary.to_csv(result_path("step2_8_summary.csv"))
     print(hub.groupby("M")["entry_indeg"].agg(["min", "max"])) #使ったハブの入次数
 
 # ---- 2-8: ハブ入口の順位と、その場で止まった割合 ----
@@ -177,7 +176,7 @@ def step2_8_entry_rank():
     out = {}
     for name, path in [("hub", "step2_greedy_hub_entry.csv"),
                        ("random", "step2_greedy_M_entry.csv")]:
-        df = pd.read_csv(RESULTS / path)
+        df = pd.read_csv(result_path(path))
         df["entry_rank"] = [int((D[qi] < D[qi, e]).sum()) + 1
                             for qi, e in zip(df["query"], df["entry"])]
         df["stuck"] = df["hops"] == 0
@@ -188,7 +187,7 @@ def step2_8_entry_rank():
         )
     summary = pd.concat(out, names=["entry"]).round(3)
     print(summary)
-    summary.to_csv(RESULTS / "step2_8_entry_rank.csv")
+    summary.to_csv(result_path("step2_8_entry_rank.csv"))
 
 
 

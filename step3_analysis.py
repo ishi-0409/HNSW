@@ -5,16 +5,15 @@ import pandas as pd
 import time
 import numpy as np
 
-from common import load_sift, brute_force, recall_at_k
+from common import load_sift, brute_force, recall_at_k, result_path
 from graph import build_knn_graph, greedy_search, search_layer, reachable_from
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
-RESULTS = ROOT / "results"
 
 def step3_12_curve(save:bool) -> pd.DataFrame:
     "(M, ef)ごとに平均し、距離計算回数とrecall@10曲線を描く"
-    df = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+    df = pd.read_csv(result_path("step3_beam_M_ef.csv"))
 
     # 検算用
     # sub = df[(df["M"] == 10) & (df["ef"] == 10)]
@@ -47,16 +46,16 @@ def step3_12_curve(save:bool) -> pd.DataFrame:
     ax.grid(True, which="both", alpha=0.3)        
 
     if save:
-        summary.to_csv(RESULTS / "step3_12_summary.csv", index=False)
-        fig.savefig(RESULTS / "step3_12_recall_vs_ndist.png", dpi=150, bbox_inches="tight")
+        summary.to_csv(result_path("step3_12_summary.csv"), index=False)
+        fig.savefig(result_path("step3_12_recall_vs_ndist.png"), dpi=150, bbox_inches="tight")
 
     return summary
 
 def step3_13_compare(save:bool) -> pd.DataFrame:
     "同じ距離計算回数ならMとefのどちらを増やすほうが得か"
     _, _, GT = load_sift()
-    beam = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
-    greedy = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    beam = pd.read_csv(result_path("step3_beam_M_ef.csv"))
+    greedy = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
 
     # Step 2 の recall@1 = 停止点が本当の1位か
     greedy["recall1"] = (
@@ -100,14 +99,14 @@ def step3_13_compare(save:bool) -> pd.DataFrame:
     print(interp.pivot(index="n_dist", columns="M", values="recall10").round(3))
 
     if save:
-        interp.to_csv(RESULTS / "step3_13_interp.csv", index=False)
-        fig.savefig(RESULTS / "step3_13_recall1_vs_ndist.png", dpi=150, bbox_inches="tight")
+        interp.to_csv(result_path("step3_13_interp.csv"), index=False)
+        fig.savefig(result_path("step3_13_recall1_vs_ndist.png"), dpi=150, bbox_inches="tight")
 
     return interp
 
 def step3_14_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     """3-14: far の割合と入口シード間の recall の幅が ef でどう変わるか"""
-    df = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+    df = pd.read_csv(result_path("step3_beam_M_ef.csv"))
 
     # 1. 一番近い点の本当の順位で4種類に分ける(Step 2-7 と同じ区切り)
     df["kind"] = pd.cut(df["rank_top1"], bins=[0, 1, 10, 100, np.inf],
@@ -130,14 +129,14 @@ def step3_14_review(save: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     print(width.round(3).to_string(index=False))
 
     if save:
-        kinds.to_csv(RESULTS / "step3_14_kinds.csv", index=False)
-        width.to_csv(RESULTS / "step3_14_seed_width.csv", index=False)
+        kinds.to_csv(result_path("step3_14_kinds.csv"), index=False)
+        width.to_csv(result_path("step3_14_seed_width.csv"), index=False)
     return kinds, width
 
 
 def step3_14_hard_queries(save: bool) -> pd.DataFrame:
     """3-14 クエリごとに、5入口中何回 far だったかを数える"""
-    df = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+    df = pd.read_csv(result_path("step3_beam_M_ef.csv"))
     df["far"] = df["rank_top1"] > 100
 
     # (M, ef, クエリ) ごとに far の回数(0〜5)
@@ -151,8 +150,8 @@ def step3_14_hard_queries(save: bool) -> pd.DataFrame:
     print(dist.to_string(index=False))
 
     if save:
-        per_q.to_csv(RESULTS / "step3_14_far_per_query.csv", index=False)
-        dist.to_csv(RESULTS / "step3_14_far_dist.csv", index=False)
+        per_q.to_csv(result_path("step3_14_far_per_query.csv"), index=False)
+        dist.to_csv(result_path("step3_14_far_dist.csv"), index=False)
     return dist
 
 if __name__ == "__main__":

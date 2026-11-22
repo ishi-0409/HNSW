@@ -4,6 +4,7 @@ import numpy as np
 
 ROOT = Path(__file__).parent
 SIFT = ROOT / "siftsmall"
+RESULTS = ROOT / "results"
 
 
 def read_fvecs(path: str | Path) -> np.ndarray:
@@ -45,3 +46,9 @@ def recall_at_k(pred: np.ndarray | list[int], gt: np.ndarray, k: int) -> float:
     return len(hits) / k
 
 
+# 結果ファイルの置き場所。ファイル名の先頭(step4 など)のフォルダに入れる
+def result_path(name: str) -> Path:
+    step = name.split("_")[0]  # "step4_9_beam_M_ef.csv" → "step4"
+    path = RESULTS / step / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from common import load_sift, brute_force, recall_at_k
+from common import load_sift, brute_force, recall_at_k, result_path
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
@@ -119,7 +119,7 @@ def step1_5_timing() -> None:
                      len(Qd), N_REPEATS, f"{ms:.3f}", f"{1000 / ms:.1f}"])
         print(name, f"{ms:.3f} ms/クエリ", f"{1000 / ms:.1f} QPS")
 
-    with open(ROOT / "results" / "step1_brute_force.csv", "w", newline="") as f:
+    with open(result_path("step1_brute_force.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["date", "dataset", "n", "d", "k", "n_queries", "n_repeats", "median_ms_per_query", "qps"])
         w.writerows(rows)

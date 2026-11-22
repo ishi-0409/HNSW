@@ -1,5 +1,5 @@
 import numpy as np
-from common import load_sift, recall_at_k
+from common import load_sift, recall_at_k, result_path
 from pathlib import Path
 from graph import reachable_from, search_layer
 from nsw import init_nsw, add_edge, insert_first_two, insert_point, build_nsw, save_nsw, load_nsw
@@ -7,7 +7,6 @@ import time
 import pandas as pd
 
 DATA = Path(__file__).parent / "data"
-RESULTS = Path(__file__).parent / "results"
 
 def step4_1_check_init():
     X, Q, GT = load_sift()
@@ -162,7 +161,7 @@ def step4_5_build_sift(
             assert graph2 == graph and np.array_equal(order2, order)
 
     if save:
-        pd.DataFrame(rows).to_csv(RESULTS / "step4_5_build.csv", index=False)
+        pd.DataFrame(rows).to_csv(result_path("step4_5_build.csv"), index=False)
 
 def step4_6_check_trick(M: int = 10, ef_construction: int = 100, seed: int = 0, t: int = 100) -> None:
     """graph[p] の先頭 M 個 = p が挿入時に選んだ M 点、を1点で確かめる。"""
@@ -211,7 +210,7 @@ def step4_6_insert_recall(
     df = pd.DataFrame(rows)
     print(df.groupby("M")["recall_M"].agg(["mean", "min", "count"]))
     if save:
-        df.to_csv(RESULTS / "step4_6_insert_recall.csv", index=False)
+        df.to_csv(result_path("step4_6_insert_recall.csv"), index=False)
     return df
 
 
@@ -237,7 +236,7 @@ def step4_6_check_small_ef(M: int = 10, ef_construction: int = 10, seed: int = 0
     positions = np.linspace(100, len(X) - 1, 100).astype(int)
     df = pd.DataFrame(insert_recall_rows(X, graph, order, M, positions))
     print(df["recall_M"].agg(["mean", "min", "count"]))
-    df.to_csv(RESULTS / "step4_6_check_small_ef.csv", index=False)
+    df.to_csv(result_path("step4_6_check_small_ef.csv"), index=False)
 
 def step4_8_check_small() -> None:
     # 4-3 の数直線5点(A=0, B=10, C=4, D=7, E=2, M=2)の NSW
@@ -305,7 +304,7 @@ def step4_9_beam_M_ef(
     X, Q, GT = load_sift()
     # 変更:kNN グラフ(full)の読み込みは削除
 
-    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    df2 = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     entries = df2[df2["M"] == 10][["seed", "query", "entry"]]
 
     d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
@@ -332,13 +331,13 @@ def step4_9_beam_M_ef(
 
     df = pd.DataFrame(rows)
     if save:
-        df.to_csv(RESULTS / "step4_9_beam_M_ef.csv", index=False)  # 変更:保存先
+        df.to_csv(result_path("step4_9_beam_M_ef.csv"), index=False)  # 変更:保存先
     else:
         print(df.groupby(["M", "ef"])[["recall1", "recall10", "n_dist"]].mean())
     return df  # 変更
 
 def step4_9_check(df: pd.DataFrame) -> None:
-    df3 = pd.read_csv(RESULTS / "step3_beam_M_ef.csv")
+    df3 = pd.read_csv(result_path("step3_beam_M_ef.csv"))
 
     # 確認2:形が Step 3 と同じ
     assert len(df) == 9000
@@ -374,7 +373,7 @@ def step4_12_hub_entry(
         save: bool = True,
         ) -> pd.DataFrame:
     X, Q, GT = load_sift()
-    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    df2 = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     rand = df2[df2["M"] == 10][["seed", "query", "entry"]]
     d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
     nq = len(Q)
@@ -410,7 +409,7 @@ def step4_12_hub_entry(
 
     df = pd.DataFrame(rows)
     if save:
-        df.to_csv(RESULTS / "step4_12_hub_entry.csv", index=False)
+        df.to_csv(result_path("step4_12_hub_entry.csv"), index=False)
     else:
         print(df.groupby(["M", "ef", "group"])[["recall1", "entry_rank", "stuck"]].mean())
     return df
@@ -421,7 +420,7 @@ def step4_12_check(df: pd.DataFrame) -> None:
     assert (df.groupby(["M", "ef", "group"]).size() == 500).all()
 
     # 確認1:ランダム入口の ef=10 が 4-9 と一致
-    d9 = pd.read_csv(RESULTS / "step4_9_beam_M_ef.csv")
+    d9 = pd.read_csv(result_path("step4_9_beam_M_ef.csv"))
     d9 = d9[d9["ef"] == 10]
     r = df[(df["group"] == "random") & (df["ef"] == 10)].rename(columns={"k": "seed"})
     m = r.merge(d9, on=["M", "seed", "query"], suffixes=("", "_9"))
@@ -464,7 +463,7 @@ def step4_14_check_small() -> None:
 
 def step4_14_edge_length(Ms: list[int], save: bool) -> pd.DataFrame:
     X, _, _ = load_sift()
-    hub = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+    hub = pd.read_csv(result_path("step4_12_hub_entry.csv"))
     rows = []
     for M in Ms:
         graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc100_seed0.npz")
@@ -484,11 +483,11 @@ def step4_14_edge_length(Ms: list[int], save: bool) -> pd.DataFrame:
                 })
     df = pd.DataFrame(rows)
     if save:
-        df.to_csv(RESULTS / "step4_14_edge_length.csv", index=False)
+        df.to_csv(result_path("step4_14_edge_length.csv"), index=False)
     return df
 
 def step4_14_check(df: pd.DataFrame) -> None:
-    hub = pd.read_csv(RESULTS / "step4_12_hub_entry.csv")
+    hub = pd.read_csv(result_path("step4_12_hub_entry.csv"))
     ent = hub[["M", "group", "entry", "entry_deg", "entry_pos"]].drop_duplicates()
     for M, sub in df.groupby("M"):
         # 全点:10000 行、次数の合計が理論値と一致
@@ -523,7 +522,7 @@ def step4_15_deg_sum(ef: int = 64, save: bool = True) -> pd.DataFrame:
     nsw, _ = load_nsw(DATA / "nsw_sift10k_M10_efc100_seed0.npz")
     graphs = {("knn", 20): knn, ("nsw", 10): nsw}  # 平均次数はどちらも約20
 
-    df2 = pd.read_csv(RESULTS / "step2_greedy_M_entry.csv")
+    df2 = pd.read_csv(result_path("step2_greedy_M_entry.csv"))
     entries = df2[df2["M"] == 10][["seed", "query", "entry"]]
 
     rows = []
@@ -538,7 +537,7 @@ def step4_15_deg_sum(ef: int = 64, save: bool = True) -> pd.DataFrame:
             })
     df = pd.DataFrame(rows)
     if save:
-        df.to_csv(RESULTS / "step4_15_deg_sum.csv", index=False)
+        df.to_csv(result_path("step4_15_deg_sum.csv"), index=False)
     return df
 
 def step4_15_check(df: pd.DataFrame) -> None:
@@ -551,7 +550,7 @@ def step4_15_check(df: pd.DataFrame) -> None:
     # 確認2:探索の動きが変わっていない(3-10・4-9 の csv と一致)
     keys = ["M", "ef", "seed", "query"]
     for name, path in [("knn", "step3_beam_M_ef.csv"), ("nsw", "step4_9_beam_M_ef.csv")]:
-        old = pd.read_csv(RESULTS / path)
+        old = pd.read_csv(result_path(path))
         m = df[df["graph"] == name].merge(old, on=keys, suffixes=("", "_old"))
         assert len(m) == 500
         for c in ["entry", "top1", "n_dist", "n_expand"]:
