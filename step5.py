@@ -1,8 +1,8 @@
 import numpy as np
 import csv
 
-from common import result_path
-from hnsw import assign_levels, insert_point_hnsw, select_neighbors_simple, shrink_neighbors
+from common import make_uniform, result_path
+from hnsw import assign_levels, build_hnsw, insert_point_hnsw, select_neighbors_simple, shrink_neighbors
 
 
 def step5_1_check_levels():
@@ -82,6 +82,35 @@ def step5_3_check_insert():
         assert entry == 3
         assert n_list == want_n
     print("5-3 の確認: OK")
+
+
+def step5_4_check_build():
+    n, d, M = 1000, 8, 5
+    X = make_uniform(n, d, np.random.default_rng(0))
+    mL = 1 / np.log(M)
+    layers, levels, entry, n_dist = build_hnsw(X, M, 50, mL, 2 * M, seed=0)
+    print(f"層の数={len(layers)}, 入口={entry}(レベル{levels[entry]}), 構築の距離計算回数={n_dist}")
+
+    for l, graph in enumerate(layers):
+        Mmax = 2 * M if l == 0 else M
+        degs = [len(nb) for nb in graph]
+        print(f"  層{l}: 点数={int((levels >= l).sum())}, 最大次数={max(degs)}(上限 {Mmax})")
+        pointed = set()
+        for i, nb in enumerate(graph):
+            assert i not in nb             # 自分への辺がない
+            assert len(nb) == len(set(nb))  # 重複がない
+            assert len(nb) <= Mmax          # 次数が上限以下
+            if levels[i] < l:
+                assert nb == []             # 層 l にいない点は近所が空
+            pointed.update(nb)
+        assert all(levels[j] >= l for j in pointed)  # 層 l の辺はレベル l 以上の点にしか向かない
+
+    assert levels[entry] == levels.max()  # 入口がいちばん高い
+
+    # 同じ seed なら同じ結果
+    layers2, _, entry2, n_dist2 = build_hnsw(X, M, 50, mL, 2 * M, seed=0)
+    assert layers2 == layers and entry2 == entry and n_dist2 == n_dist
+    print("5-4 の確認: OK")
 
 
 if __name__ == "__main__":

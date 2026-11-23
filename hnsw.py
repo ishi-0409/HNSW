@@ -107,3 +107,38 @@ def insert_point_hnsw(
     if l > L:
         entry = idx
     return entry, n_dist
+
+
+def build_hnsw(
+    X: np.ndarray,
+    M: int,
+    ef_construction: int,
+    mL: float,
+    Mmax0: int | None,
+    seed: int = 0,
+    order: np.ndarray | None = None,
+) -> tuple[list[list[list[int]]], np.ndarray, int, int]:
+    """Xの全点を順に入れてHNSWを作る(論文 Alg. 1 のくり返し)。
+
+    引数
+        X: データ(N, d)
+        M, ef_construction, Mmax0: insert_point_hnsw と同じ
+        mL: レベルの出やすさ(assign_levels に渡す)
+        seed: レベル用の乱数シード
+        order: 入れる順番。None なら番号順(5-7 では NSW と同じ順番を渡す)
+    戻り値
+        (layers, levels, 入口, 構築の距離計算回数の合計)
+    """
+    n = len(X)
+    if order is None:
+        order = np.arange(n)
+    levels = assign_levels(n, mL, seed)
+    layers: list[list[list[int]]] = [[[] for _ in range(n)] for _ in range(levels.max() + 1)]
+
+    entry = int(order[0])  # 最初の点は入口にするだけ(辺なし)
+    n_dist_total = 0
+    for idx in order[1:]:
+        entry, n_dist = insert_point_hnsw(X, layers, levels, int(idx), entry, M, Mmax0, ef_construction)
+        n_dist_total += n_dist
+
+    return layers, levels, entry, n_dist_total
