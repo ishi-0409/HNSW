@@ -32,14 +32,47 @@ def select_neighbors_simple(cands: list[int], M: int) -> list[int]:
     return cands[:M]
 
 
-def shrink_neighbors(X: np.ndarray, graph: list[list[int]], e: int, Mmax: int) -> int:
-    """点eの近所がMmax本を超えていたら、eに近い順にMmax本だけ残す(論文 Alg. 1 の12〜16行目)。
+def select_neighbors_heuristic(
+    X: np.ndarray, q: np.ndarray, cands: list[int], cand_dists: list[float], M: int
+) -> tuple[list[int], int]:
+    """近い順の候補 e を1つずつ見て、選んだすべての r について dist(e, r) > dist(e, q) なら選ぶ(論文 Alg. 4)。
+
+    extendCandidates と keepPrunedConnections はどちらも False。
+
+    引数
+        X: データ(N, d)
+        q: 基準の点(挿入する点、または近所を削る点)のベクトル
+        cands: q に近い順の点番号
+        cand_dists: cands と同じ順の q からの距離
+        M: 選ぶ数の上限
+    戻り値
+        (選んだ点番号(近い順、M個以下), 距離計算回数)。距離計算は候補と選んだ点の間の分だけ
+    """
+    R: list[int] = []
+    n_dist = 0
+    for e, d_eq in zip(cands, cand_dists):
+        if len(R) >= M:
+            break
+        if R:
+            d_er = np.linalg.norm(X[R] - X[e], axis=1)
+            n_dist += len(R)
+            if np.any(d_er <= d_eq):  # 選んだ点のどれかのほうが e に近い → 落とす
+                continue
+        R.append(e)  # 最初の候補は比べる相手がいないので必ず選ぶ
+    return R, n_dist
+
+
+def shrink_neighbors(
+    X: np.ndarray, graph: list[list[int]], e: int, Mmax: int, heuristic: bool = False
+) -> int:
+    """点eの近所がMmax本を超えていたら、Mmax本以下に削る(論文 Alg. 1 の12〜16行目)。
 
     引数
         X: データ(N, d)
         graph: 1つの層の近所リスト。graph[e] を書き換える
         e: 削る点の番号
         Mmax: 次数の上限
+        heuristic: True なら Alg. 4(e を基準に選び直す。Mmax 本より少なくなることがある)、False なら e に近い順
     戻り値
         距離計算回数。上限以下なら0
     """
@@ -47,8 +80,12 @@ def shrink_neighbors(X: np.ndarray, graph: list[list[int]], e: int, Mmax: int) -
     if len(nbs) <= Mmax:
         return 0
     dists = np.linalg.norm(X[nbs] - X[e], axis=1)  # 基準は新しい点ではなく e
-    keep = np.argsort(dists, kind="stable")[:Mmax]  # 同じ距離でも順番が揺れないように stable
-    graph[e] = select_neighbors_simple([nbs[i] for i in keep], Mmax)
+    order = np.argsort(dists, kind="stable")  # 同じ距離でも順番が揺れないように stable
+    cands = [nbs[i] for i in order]
+    if heuristic:
+        graph[e], n_dist = select_neighbors_heuristic(X, X[e], cands, [float(dists[i]) for i in order], Mmax)
+        return len(nbs) + n_dist
+    graph[e] = select_neighbors_simple(cands, Mmax)
     return len(nbs)
 
 
@@ -61,6 +98,7 @@ def insert_point_hnsw(
     M: int,
     Mmax0: int | None,
     ef_construction: int,
+    heuristic: bool = False,
 ) -> tuple[int, int]:
     """点idxを上の層から順に入れる(論文 Alg. 1)。
 
@@ -73,8 +111,9 @@ def insert_point_hnsw(
         M: 1点につなぐ数。層1以上の次数の上限も M
         Mmax0: 層0の次数の上限。None なら削らない(NSW との検算用)
         ef_construction: 辺を張る層で保持する候補の数
+        heuristic: True なら近所を Alg. 4 で選ぶ(削るときも)。False なら Alg. 3
     戻り値
-        (更新後の入口, 距離計算回数)。距離計算回数は探索と削る処理の合計
+        (更新後の入口, 距離計算回数)。距離計算回数は探索・近所の選択・削る処理の合計
     """
     q = X[idx]
     l = int(levels[idx])
@@ -92,14 +131,18 @@ def insert_point_hnsw(
     for lc in range(min(L, l), -1, -1):
         res = search_layer(X, layers[lc], q, ep, ef_construction)
         n_dist += res["n_dist"]
-        neighbors = select_neighbors_simple(res["topk"], M)
+        if heuristic:
+            neighbors, n = select_neighbors_heuristic(X, q, res["topk"], res["dists"], M)
+            n_dist += n
+        else:
+            neighbors = select_neighbors_simple(res["topk"], M)
         for nb in neighbors:
             add_edge(layers[lc], idx, nb)
 
         Mmax = Mmax0 if lc == 0 else M
         if Mmax is not None:
             for nb in neighbors:
-                n_dist += shrink_neighbors(X, layers[lc], nb, Mmax)
+                n_dist += shrink_neighbors(X, layers[lc], nb, Mmax, heuristic)
 
         ep = res["topk"]  # 論文どおり W をまるごと次の層の入口にする
 
@@ -117,6 +160,7 @@ def build_hnsw(
     Mmax0: int | None,
     seed: int = 0,
     order: np.ndarray | None = None,
+    heuristic: bool = False,
 ) -> tuple[list[list[list[int]]], np.ndarray, int, int]:
     """Xの全点を順に入れてHNSWを作る(論文 Alg. 1 のくり返し)。
 
@@ -126,6 +170,7 @@ def build_hnsw(
         mL: レベルの出やすさ(assign_levels に渡す)
         seed: レベル用の乱数シード
         order: 入れる順番。None なら番号順(5-7 では NSW と同じ順番を渡す)
+        heuristic: insert_point_hnsw と同じ
     戻り値
         (layers, levels, 入口, 構築の距離計算回数の合計)
     """
@@ -138,7 +183,9 @@ def build_hnsw(
     entry = int(order[0])  # 最初の点は入口にするだけ(辺なし)
     n_dist_total = 0
     for idx in order[1:]:
-        entry, n_dist = insert_point_hnsw(X, layers, levels, int(idx), entry, M, Mmax0, ef_construction)
+        entry, n_dist = insert_point_hnsw(
+            X, layers, levels, int(idx), entry, M, Mmax0, ef_construction, heuristic
+        )
         n_dist_total += n_dist
 
     return layers, levels, entry, n_dist_total

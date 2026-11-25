@@ -7,6 +7,7 @@ from hnsw import (
     build_hnsw,
     insert_point_hnsw,
     search_hnsw,
+    select_neighbors_heuristic,
     select_neighbors_simple,
     shrink_neighbors,
 )
@@ -144,6 +145,54 @@ def step5_5_check_search():
     print(f"ランダム1000点・100クエリ(ef=100)の recall@10 平均: {np.mean(recalls):.3f}")
     assert np.mean(recalls) > 0.9
     print("5-5 の確認: OK")
+
+
+def step5_6_check_heuristic():
+    # 手計算:q=(0,0)、近い塊 A1・A2・A3、離れた点 B(論文 図2 のような配置)
+    X = np.array([[0, 0], [2, 0], [2.2, 0.3], [2.1, -0.3], [-3, 0]])  # q, A1, A2, A3, B
+    cands = [1, 3, 2, 4]  # q に近い順(A1, A3, A2, B)
+    dists = [float(np.linalg.norm(X[c] - X[0])) for c in cands]
+    assert dists == sorted(dists)
+
+    assert select_neighbors_simple(cands, 2) == [1, 3]  # Alg. 3 は塊から2点
+    # Alg. 4:A1 を選ぶ → A3・A2 は A1 のほうが近いので落とす → B を選ぶ。距離計算は A3-A1, A2-A1, B-A1 の3回
+    assert select_neighbors_heuristic(X, X[0], cands, dists, 2) == ([1, 4], 3)
+    # M を増やしても A3・A2 は落ちたまま(M個より少なくなる)
+    assert select_neighbors_heuristic(X, X[0], cands, dists, 10) == ([1, 4], 3)
+
+    # 削る:点0 の近所 [2, 4, 1, 3] を Mmax=2 に。e からの距離 4回 + 選ぶときの 3回
+    graph = [[2, 4, 1, 3], [], [], [], []]
+    assert shrink_neighbors(X, graph, 0, 2, heuristic=True) == 7
+    assert graph[0] == [1, 4]
+    graph = [[2, 4, 1, 3], [], [], [], []]
+    assert shrink_neighbors(X, graph, 0, 2) == 4  # 既定(Alg. 3)は今までどおり
+    assert graph[0] == [1, 3]
+    print("手計算の例: OK")
+
+    # 5-4 と同じ1000点で heuristic=True のグラフを作り、同じ形の確認をする
+    n, d, M = 1000, 8, 5
+    X = make_uniform(n, d, np.random.default_rng(0))
+    mL = 1 / np.log(M)
+    layers, levels, entry, n_dist = build_hnsw(X, M, 50, mL, 2 * M, seed=0, heuristic=True)
+    _, _, _, n_dist_simple = build_hnsw(X, M, 50, mL, 2 * M, seed=0)
+    print(f"構築の距離計算回数: Alg. 4={n_dist}, Alg. 3={n_dist_simple}")
+    for l, graph in enumerate(layers):
+        Mmax = 2 * M if l == 0 else M
+        degs = [len(nb) for nb in graph if nb]
+        print(f"  層{l}: 点数={int((levels >= l).sum())}, 最大次数={max(degs, default=0)}(上限 {Mmax}), 平均次数={np.mean(degs) if degs else 0:.2f}")
+        pointed = set()
+        for i, nb in enumerate(graph):
+            assert i not in nb
+            assert len(nb) == len(set(nb))
+            assert len(nb) <= Mmax
+            if levels[i] < l:
+                assert nb == []
+            pointed.update(nb)
+        assert all(levels[j] >= l for j in pointed)
+    assert levels[entry] == levels.max()
+    layers2, _, entry2, n_dist2 = build_hnsw(X, M, 50, mL, 2 * M, seed=0, heuristic=True)
+    assert layers2 == layers and entry2 == entry and n_dist2 == n_dist
+    print("5-6 の確認: OK")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ class SearchResult(TypedDict):
     n_dist: int      # 距離計算回数
     n_expand: int    # 近所を調べた点の数
     deg_sum: int     # 調べた点の次数の合計
+    dists: list[float]  # topk と同じ順のクエリからの距離
     
 # knnグラフ構築
 def build_knn_graph(X: np.ndarray, M: int) -> np.ndarray:
@@ -67,6 +68,7 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
         n_dist: 距離計算回数(int)
         n_expand: 近所を調べた点の数(int)
         deg_sum: 調べた点の次数の合計(int)
+        dists: topk と同じ順のクエリからの距離(list[float])
     """
     
     d0 = np.linalg.norm(X[entries] - q, axis=1)
@@ -106,9 +108,11 @@ def search_layer(X, graph, q, entries, ef) -> SearchResult:
                     heapq.heappop(W)
 
     #探索済みWのリストを距離が近い順にソートする
-    topk = [int(e) for _, e in sorted((-neg_d, e) for neg_d, e in W)]
+    pairs = sorted((-neg_d, e) for neg_d, e in W)
+    topk = [int(e) for _, e in pairs]
+    dists = [float(d) for d, _ in pairs]  # Alg. 4 で使う(計算し直さないため)
 
-    return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand, "deg_sum": deg_sum}
+    return {"topk": topk, "n_dist": n_dist, "n_expand": n_expand, "deg_sum": deg_sum, "dists": dists}
 
 # ゴールにたどり着けるかの確認
 def reachable_from(graph: np.ndarray, entries: list[int]) -> np.ndarray:
