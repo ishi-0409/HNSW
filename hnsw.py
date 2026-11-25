@@ -142,3 +142,45 @@ def build_hnsw(
         n_dist_total += n_dist
 
     return layers, levels, entry, n_dist_total
+
+
+def search_hnsw(
+    X: np.ndarray,
+    layers: list[list[list[int]]],
+    levels: np.ndarray,
+    entry: int,
+    q: np.ndarray,
+    k: int,
+    ef: int,
+) -> dict:
+    """入口から上の層を ef=1 で降り、層0で ef のビーム探索をして近いk点を返す(論文 Alg. 5)。
+
+    引数
+        X, layers, levels, entry: build_hnsw の戻り値とデータ
+        q: クエリ(d,)
+        k: 返す数
+        ef: 層0で保持する候補の数。k 以上にする(k 未満だと k 個に届かない)
+    戻り値
+        topk: クエリに近い順の点番号(最大k個)
+        n_dist: 全層の距離計算回数
+        n_dist0, n_expand, deg_sum: 層0だけの値(search_layer と同じ意味)
+    """
+    n_dist = 0
+    ep = [entry]
+
+    # 上の層:ef=1 で一番近い点を探して降りる
+    for lc in range(int(levels[entry]), 0, -1):
+        res = search_layer(X, layers[lc], q, ep, 1)
+        n_dist += res["n_dist"]
+        ep = res["topk"][:1]
+
+    # 層0:ef でビーム探索
+    res = search_layer(X, layers[0], q, ep, ef)
+    n_dist += res["n_dist"]
+    return {
+        "topk": res["topk"][:k],
+        "n_dist": n_dist,
+        "n_dist0": res["n_dist"],
+        "n_expand": res["n_expand"],
+        "deg_sum": res["deg_sum"],
+    }

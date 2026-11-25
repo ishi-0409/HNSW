@@ -1,8 +1,15 @@
 import numpy as np
 import csv
 
-from common import make_uniform, result_path
-from hnsw import assign_levels, build_hnsw, insert_point_hnsw, select_neighbors_simple, shrink_neighbors
+from common import brute_force, make_uniform, recall_at_k, result_path
+from hnsw import (
+    assign_levels,
+    build_hnsw,
+    insert_point_hnsw,
+    search_hnsw,
+    select_neighbors_simple,
+    shrink_neighbors,
+)
 
 
 def step5_1_check_levels():
@@ -111,6 +118,32 @@ def step5_4_check_build():
     layers2, _, entry2, n_dist2 = build_hnsw(X, M, 50, mL, 2 * M, seed=0)
     assert layers2 == layers and entry2 == entry and n_dist2 == n_dist
     print("5-4 の確認: OK")
+
+
+def step5_5_check_search():
+    # 手計算:5-3 の Mmax0=2 のグラフ(数直線の5点、入口は点3)で q=9 を探す
+    X = np.array([[0], [1], [3], [4], [10]], dtype=np.float32)
+    levels = np.array([1, 0, 0, 2, 0])
+    layers = [[[] for _ in range(5)] for _ in range(3)]
+    entry = 0
+    for idx in range(1, 5):
+        entry, _ = insert_point_hnsw(X, layers, levels, idx, entry, 1, 2, 2)
+    res = search_hnsw(X, layers, levels, entry, np.array([9], dtype=np.float32), k=2, ef=2)
+    print(f"手計算の例: {res}")
+    assert res == {"topk": [4, 3], "n_dist": 6, "n_dist0": 3, "n_expand": 2, "deg_sum": 3}
+
+    # 動作確認:5-4 と同じ1000点で、別に作った100クエリの recall@10 を見る
+    n, d, M, k = 1000, 8, 5, 10
+    X = make_uniform(n, d, np.random.default_rng(0))
+    Q = make_uniform(100, d, np.random.default_rng(1))
+    layers, levels, entry, _ = build_hnsw(X, M, 50, 1 / np.log(M), 2 * M, seed=0)
+    recalls = []
+    for q in Q:
+        res = search_hnsw(X, layers, levels, entry, q, k, ef=100)
+        recalls.append(recall_at_k(res["topk"], brute_force(X, q, k), k))
+    print(f"ランダム1000点・100クエリ(ef=100)の recall@10 平均: {np.mean(recalls):.3f}")
+    assert np.mean(recalls) > 0.9
+    print("5-5 の確認: OK")
 
 
 if __name__ == "__main__":
