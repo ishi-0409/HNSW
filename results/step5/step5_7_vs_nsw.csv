@@ -1,0 +1,4 @@
+M,edges_equal,n_dist_hnsw,n_dist_nsw,diff
+10,True,7439605,7439604,1
+20,True,10193602,10193601,1
+40,True,13312199,13312198,1

@@ -1,7 +1,8 @@
 import numpy as np
 import csv
+from pathlib import Path
 
-from common import brute_force, make_uniform, recall_at_k, result_path
+from common import brute_force, load_sift, make_uniform, recall_at_k, result_path
 from hnsw import (
     assign_levels,
     build_hnsw,
@@ -11,6 +12,9 @@ from hnsw import (
     select_neighbors_simple,
     shrink_neighbors,
 )
+from nsw import load_nsw
+
+DATA = Path(__file__).parent / "data"
 
 
 def step5_1_check_levels():
@@ -193,6 +197,37 @@ def step5_6_check_heuristic():
     layers2, _, entry2, n_dist2 = build_hnsw(X, M, 50, mL, 2 * M, seed=0, heuristic=True)
     assert layers2 == layers and entry2 == entry and n_dist2 == n_dist
     print("5-6 の確認: OK")
+
+
+def step5_7_check_vs_nsw(Ms: tuple[int, ...] = (10, 20, 40), ef_construction: int = 100, seed: int = 0):
+    # mL=0・層0の上限なし・Alg. 3・NSW と同じ順番で作ると、Step 4 の NSW と辺まで一致するはず
+    X, _, _ = load_sift()
+    with open(result_path("step4_5_build.csv"), encoding="utf-8") as f:
+        nsw_n_dist = {int(r["M"]): int(r["n_dist_build"]) for r in csv.DictReader(f)}
+
+    rows = []
+    for M in Ms:
+        nsw_graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc{ef_construction}_seed{seed}.npz")
+        layers, levels, entry, n_dist = build_hnsw(X, M, ef_construction, 0.0, None, seed=seed, order=order)
+        edges_equal = len(layers) == 1 and layers[0] == nsw_graph  # 近所リストの並び順まで比べる
+        row = {
+            "M": M,
+            "edges_equal": edges_equal,
+            "n_dist_hnsw": n_dist,
+            "n_dist_nsw": nsw_n_dist[M],
+            "diff": n_dist - nsw_n_dist[M],
+        }
+        print(row)
+        rows.append(row)
+        assert (levels == 0).all() and entry == int(order[0])  # 全点がレベル0、入口は最初の点のまま
+        assert edges_equal
+        assert row["diff"] == 1  # NSW は2点目を探さずにつなぐ(insert_first_two)ので、その1回だけ少ない
+
+    with open(result_path("step5_7_vs_nsw.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    print("5-7 の確認: OK")
 
 
 if __name__ == "__main__":
