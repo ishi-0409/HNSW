@@ -1,4 +1,5 @@
 import numpy as np
+from pathlib import Path
 
 from graph import search_layer
 from nsw import add_edge
@@ -189,6 +190,29 @@ def build_hnsw(
         n_dist_total += n_dist
 
     return layers, levels, entry, n_dist_total
+
+
+def save_hnsw(path: Path, layers: list[list[list[int]]], levels: np.ndarray, entry: int) -> None:
+    """各層を CSR 形式(offsets{l}, neighbors{l})にして、levels・入口と一緒に .npz に保存する。"""
+    arrays = {}
+    for l, graph in enumerate(layers):
+        degs = np.array([len(nb) for nb in graph], dtype=np.int64)
+        offsets = np.zeros(len(graph) + 1, dtype=np.int64)
+        offsets[1:] = np.cumsum(degs)
+        arrays[f"offsets{l}"] = offsets
+        arrays[f"neighbors{l}"] = np.array([j for nb in graph for j in nb], dtype=np.int32)
+    np.savez(path, levels=levels, entry=np.array(entry), n_layers=np.array(len(layers)), **arrays)
+
+
+def load_hnsw(path: Path) -> tuple[list[list[list[int]]], np.ndarray, int]:
+    """save_hnsw で保存したファイルから (layers, levels, 入口) を読み戻す。"""
+    data = np.load(path)
+    layers = []
+    for l in range(int(data["n_layers"])):
+        offsets = data[f"offsets{l}"]
+        neighbors = data[f"neighbors{l}"]
+        layers.append([neighbors[offsets[i]:offsets[i + 1]].tolist() for i in range(len(offsets) - 1)])
+    return layers, data["levels"], int(data["entry"])
 
 
 def search_hnsw(

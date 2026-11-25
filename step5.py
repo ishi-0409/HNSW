@@ -7,6 +7,8 @@ from hnsw import (
     assign_levels,
     build_hnsw,
     insert_point_hnsw,
+    load_hnsw,
+    save_hnsw,
     search_hnsw,
     select_neighbors_heuristic,
     select_neighbors_simple,
@@ -228,6 +230,112 @@ def step5_7_check_vs_nsw(Ms: tuple[int, ...] = (10, 20, 40), ef_construction: in
         writer.writeheader()
         writer.writerows(rows)
     print("5-7 の確認: OK")
+
+
+# 5-8 で作るグラフ:名前 → (mL を使うか, heuristic)。上限はどれも層0が 2M、層1以上が M
+HNSW_VARIANTS = {
+    "cap": (False, False),      # グラフ2:上限だけ(mL=0)
+    "layered": (True, False),   # グラフ3:上限+層
+    "hnsw": (True, True),       # グラフ4:上限+層+ヒューリスティック
+}
+
+
+def hnsw_path(name: str, M: int, ef_construction: int = 100) -> Path:
+    return DATA / f"hnsw_sift10k_{name}_M{M}_efc{ef_construction}.npz"
+
+
+def check_hnsw(layers: list[list[list[int]]], levels: np.ndarray, entry: int, M: int, Mmax0: int) -> None:
+    """5-4 と同じ形の確認(自分への辺・重複なし、次数が上限以下、層の中身、入口のレベル)"""
+    for l, graph in enumerate(layers):
+        Mmax = Mmax0 if l == 0 else M
+        pointed = set()
+        for i, nb in enumerate(graph):
+            assert i not in nb
+            assert len(nb) == len(set(nb))
+            assert len(nb) <= Mmax
+            if levels[i] < l:
+                assert nb == []
+            pointed.update(nb)
+        assert all(levels[j] >= l for j in pointed)
+    assert levels[entry] == levels.max()
+
+
+def step5_8_build_sift(
+    Ms: tuple[int, ...] = (10, 20, 40),
+    names: tuple[str, ...] = tuple(HNSW_VARIANTS),
+    ef_construction: int = 100,
+    seed: int = 0,
+):
+    """グラフ2〜4 を作って data/ に保存する。構築の距離計算回数もファイルに入れる(csv は step5_8_summary で出す)"""
+    import time
+
+    X, _, _ = load_sift()
+    for M in Ms:
+        for name in names:
+            use_mL, heuristic = HNSW_VARIANTS[name]
+            mL = 1 / np.log(M) if use_mL else 0.0
+            t0 = time.perf_counter()
+            layers, levels, entry, n_dist = build_hnsw(
+                X, M, ef_construction, mL, 2 * M, seed=seed, heuristic=heuristic
+            )
+            build_sec = time.perf_counter() - t0  # 参考(画面に出すだけ)
+
+            check_hnsw(layers, levels, entry, M, 2 * M)
+            path = hnsw_path(name, M, ef_construction)
+            save_hnsw(path, layers, levels, entry)
+            np.save(path.with_suffix(".n_dist.npy"), np.array(n_dist))  # 構築の距離計算回数
+            layers2, levels2, entry2 = load_hnsw(path)
+            assert layers2 == layers and np.array_equal(levels2, levels) and entry2 == entry
+            print(f"{name} M={M}: 層={len(layers)}, 入口={entry}, n_dist={n_dist}, {build_sec:.1f}秒", flush=True)
+
+
+def step5_8_summary(Ms: tuple[int, ...] = (10, 20, 40), ef_construction: int = 100):
+    """保存したグラフ2〜4 を読み、構築の距離計算回数と層ごとの点数・次数を csv に出す"""
+    with open(result_path("step4_5_build.csv"), encoding="utf-8") as f:
+        nsw_n_dist = {int(r["M"]): int(r["n_dist_build"]) for r in csv.DictReader(f)}
+
+    build_rows, layer_rows = [], []
+    for M in Ms:
+        levels_by_name = {}
+        for name in HNSW_VARIANTS:
+            path = hnsw_path(name, M, ef_construction)
+            layers, levels, entry = load_hnsw(path)
+            check_hnsw(layers, levels, entry, M, 2 * M)
+            n_dist = int(np.load(path.with_suffix(".n_dist.npy")))
+            levels_by_name[name] = levels
+            build_rows.append({
+                "graph": name,
+                "M": M,
+                "ef_construction": ef_construction,
+                "n_layers": len(layers),
+                "entry": entry,
+                "n_dist_build": n_dist,
+                "ratio_nsw": n_dist / nsw_n_dist[M],  # NSW(4-5)の構築との比
+            })
+            for l, graph in enumerate(layers):
+                degs = np.array([len(graph[i]) for i in np.flatnonzero(levels >= l)])
+                layer_rows.append({
+                    "graph": name,
+                    "M": M,
+                    "layer": l,
+                    "n_points": len(degs),
+                    "n_edges": int(degs.sum()),  # 片方向ずつ数える(近所リストの長さの合計)
+                    "avg_deg": float(degs.mean()),
+                    "max_deg": int(degs.max()),
+                })
+
+        # 層ありの2つはレベルが同じ(差はヒューリスティックだけ)。cap は全点がレベル0
+        assert np.array_equal(levels_by_name["layered"], levels_by_name["hnsw"])
+        assert (levels_by_name["cap"] == 0).all()
+
+    for name, rows in [("step5_8_build.csv", build_rows), ("step5_8_layers.csv", layer_rows)]:
+        with open(result_path(name), "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        for r in rows:
+            print(r)
+    print("5-8: OK")
 
 
 if __name__ == "__main__":

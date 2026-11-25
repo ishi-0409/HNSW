@@ -9,6 +9,7 @@
 
 - 実行は `uv run python stepN.py`
 - `data/` の .npy は git に入らない。`step0.py`(X.npy・Q.npy)→ `step1.py`(GT.npy)→ `step2.py`(kNN グラフ)の順に `uv run python` で実行すると作り直される(シード固定なので毎回同じ値)
+- NSW のグラフ(`nsw_sift10k_*.npz`)は `step4.py` の `step4_5_build_sift`、グラフ2〜4(`hnsw_sift10k_*.npz` と構築の距離計算回数 `*.n_dist.npy`)は `step5.py` の `step5_8_build_sift` で作り直す。HNSW の構築は1つ数十秒かかるので、M ごとに分けて実行してよい(`Ms=(10,)` など)
 - `siftsmall/`(SIFT10K)は配布データ。変更しない
 
 ## 構成
