@@ -316,6 +316,51 @@ def step5_14_check(t: pd.DataFrame) -> None:
     print("5-14 の確認: OK")
 
 
+def step5_15_curves(save: bool = True) -> pd.DataFrame:
+    """5-15(4次元の一様乱数・10次元の塊)で、グラフ1〜4 の recall@10 と距離計算回数を比べる。探索はしない"""
+    df = pd.concat([pd.read_csv(result_path(f"step5_15_search_{n}.csv")) for n in ("uniform4", "cluster10")])
+    summary = (df.groupby(["data", "graph", "mode", "ef"])
+                 .agg(recall10=("recall10", "mean"), recall1=("recall1", "mean"),
+                      n_dist=("n_dist", "mean"), n_rows=("recall10", "size"))
+                 .reset_index())
+    reach = pd.concat([pd.read_csv(result_path(f"step5_15_reachable_{n}.csv")) for n in ("uniform4", "cluster10")])
+
+    # 確認:行数(ランダムな入口は 500、固定は 100)、W が満杯、ef とともに n_dist が増える
+    assert (summary[summary["mode"] == "fixed"]["n_rows"] == 100).all()
+    assert (summary[summary["mode"] == "random"]["n_rows"] == 500).all()
+    assert (df["n_topk"] == df["ef"]).all()
+    for _, sub in summary.groupby(["data", "graph"]):
+        assert sub.sort_values("ef")["n_dist"].is_monotonic_increasing
+    print("5-15 の確認: OK")
+    print(summary.pivot(index="ef", columns=["data", "graph"], values="recall10").round(3).to_string())
+    print(summary.pivot(index="ef", columns=["data", "graph"], values="n_dist").round(1).to_string())
+    print(reach.to_string(index=False))
+
+    if save:
+        summary.to_csv(result_path("step5_15_summary.csv"), index=False)
+        plt.rcParams["font.family"] = ["Yu Gothic", "Noto Sans CJK JP", "sans-serif"]
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+        for ax, data, title in zip(axes, ("uniform4", "cluster10"),
+                                   ("4次元の一様乱数(M=6)", "10次元・100個の塊(M=16)")):
+            for g in GRAPH_NAMES:
+                sub = summary[(summary["data"] == data) & (summary["graph"] == g)]
+                y = (1 - sub["recall10"]).clip(lower=1e-3) if data == "uniform4" else sub["recall10"]
+                ax.plot(sub["n_dist"], y, marker="o", label=GRAPH_LABELS[g])
+            ax.set_xscale("log")
+            if data == "uniform4":
+                ax.set_yscale("log")
+                ax.set_ylabel("1 − recall@10(0 は 0.001 で表示)")
+            else:
+                ax.set_ylabel("recall@10(平均)")
+            ax.set_xlabel("距離計算回数(平均、対数)")
+            ax.set_title(title)
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=8)
+        fig.tight_layout()
+        fig.savefig(result_path("step5_15_curves.png"), dpi=120)
+    return summary
+
+
 if __name__ == "__main__":
     step5_10_summary()
     step5_12_curves()
@@ -323,3 +368,4 @@ if __name__ == "__main__":
     step5_13_per_query()
     step5_13_closed_set_summary()
     step5_14_decompose()
+    step5_15_curves()

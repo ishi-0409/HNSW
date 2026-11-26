@@ -1,0 +1,5 @@
+data,graph,indeg0,reach_fixed,reach_random_min,reach_random_max
+cluster10,nsw,0,10000,10000,10000
+cluster10,cap,1,9685,9685,9761
+cluster10,layered,0,9293,189,9408
+cluster10,hnsw,0,10000,10000,10000

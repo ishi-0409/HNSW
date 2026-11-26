@@ -1,0 +1,5 @@
+data,graph,indeg0,reach_fixed,reach_random_min,reach_random_max
+uniform4,nsw,0,10000,10000,10000
+uniform4,cap,0,10000,10000,10000
+uniform4,layered,0,10000,10000,10000
+uniform4,hnsw,0,10000,10000,10000

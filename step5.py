@@ -606,5 +606,127 @@ def step5_13_closed_set(M: int = 10):
     print("5-13 S: OK")
 
 
+# 5-15 のデータ:名前 → (次元, M)。M は論文の図に合わせる
+SYNTH = {
+    "uniform4": (4, 6),     # 図 12(a):4次元の一様乱数、M=6
+    "cluster10": (10, 16),  # 図 7:10次元、互いに離れた100個の塊、M=16
+}
+N_CLUSTERS, CLUSTER_SIGMA = 100, 0.01  # 塊の中心は [0,1]^10 に一様、点は中心のまわりに標準偏差 0.01 の正規分布
+
+
+def make_clustered(n: int, d: int, centers: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """塊の中心から1つを選び、そのまわりに正規分布で点を置く。n 点"""
+    c = rng.integers(0, len(centers), size=n)
+    return (centers[c] + rng.normal(0, CLUSTER_SIGMA, size=(n, d))).astype(np.float32)
+
+
+def synth_path(name: str, what: str) -> Path:
+    return DATA / f"step5_15_{name}_{what}.npy"
+
+
+def step5_15_make_data(n: int = 10000, n_q: int = 100):
+    """5-15 のデータ(X, Q, GT)を作って data/ に保存する。クエリはデータとは別に同じ作り方で作る"""
+    for name, (d, _) in SYNTH.items():
+        if name == "uniform4":
+            X = make_uniform(n, d, np.random.default_rng(0))
+            Q = make_uniform(n_q, d, np.random.default_rng(1))
+        else:
+            centers = make_uniform(N_CLUSTERS, d, np.random.default_rng(2))
+            X = make_clustered(n, d, centers, np.random.default_rng(0))
+            Q = make_clustered(n_q, d, centers, np.random.default_rng(1))
+            # 塊が離れているか:中心どうしの最短距離と、塊の広がり(中心からの距離の 99% 点)
+            dc = np.linalg.norm(centers[:, None] - centers[None], axis=2)
+            np.fill_diagonal(dc, np.inf)
+            spread = np.quantile(np.linalg.norm(X - centers[np.argmin(np.linalg.norm(X[:, None] - centers[None], axis=2), axis=1)], axis=1), 0.99)
+            print(f"中心どうしの最短距離={dc.min():.3f}、塊の広がり(99%)={spread:.3f}")
+            assert dc.min() > 4 * spread
+        GT = np.stack([brute_force(X, q, 100) for q in Q])
+        for what, arr in (("X", X), ("Q", Q), ("GT", GT)):
+            np.save(synth_path(name, what), arr)
+        print(f"{name}: X={X.shape}, Q={Q.shape}, GT={GT.shape}")
+
+
+def load_synth(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return tuple(np.load(synth_path(name, w)) for w in ("X", "Q", "GT"))
+
+
+def synth_graph_path(name: str, graph: str) -> Path:
+    return DATA / f"step5_15_{name}_{graph}.npz"
+
+
+def step5_15_build(names: tuple[str, ...] = tuple(SYNTH), ef_construction: int = 100, seed: int = 0):
+    """5-15 のデータでグラフ1〜4 を作って保存する(ef_construction・シードは SIFT と同じ)"""
+    import time
+    from nsw import build_nsw, save_nsw
+
+    for name in names:
+        X, _, _ = load_synth(name)
+        _, M = SYNTH[name]
+        t0 = time.perf_counter()
+        graph, order, n_dist = build_nsw(X, M, ef_construction, seed)
+        save_nsw(synth_graph_path(name, "nsw"), graph, order)
+        np.save(synth_graph_path(name, "nsw").with_suffix(".n_dist.npy"), np.array(n_dist))
+        print(f"{name} nsw: n_dist={n_dist}, {time.perf_counter() - t0:.1f}秒", flush=True)
+        for g, (use_mL, heuristic) in HNSW_VARIANTS.items():
+            t0 = time.perf_counter()
+            mL = 1 / np.log(M) if use_mL else 0.0
+            layers, levels, entry, n_dist = build_hnsw(X, M, ef_construction, mL, 2 * M, seed=seed, heuristic=heuristic)
+            check_hnsw(layers, levels, entry, M, 2 * M)
+            save_hnsw(synth_graph_path(name, g), layers, levels, entry)
+            np.save(synth_graph_path(name, g).with_suffix(".n_dist.npy"), np.array(n_dist))
+            print(f"{name} {g}: 層={len(layers)}, n_dist={n_dist}, {time.perf_counter() - t0:.1f}秒", flush=True)
+
+
+def step5_15_search(names: tuple[str, ...] = tuple(SYNTH), efs: tuple[int, ...] = EFS, n_seeds: int = 5):
+    """5-15 のデータで、グラフ1〜4 の層0の届く点と探索を csv に出す。
+    NSW・グラフ2 はランダムな入口(シード0〜4、クエリごと。2-6 と同じ作り方)、グラフ3・4 は固定の入口から降りる(A)"""
+    import time
+
+    for name in names:
+        X, Q, GT = load_synth(name)
+        n = len(X)
+        d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
+        entries = np.stack([np.random.default_rng(s).integers(0, n, size=len(Q)) for s in range(n_seeds)])
+        rows, reach_rows = [], []
+        t0 = time.perf_counter()
+        for g in GRAPH_NAMES:
+            if g == "nsw":
+                graph, order = load_nsw(synth_graph_path(name, g))
+                layers, levels, entry = [graph], np.zeros(n, dtype=int), int(order[0])
+            else:
+                layers, levels, entry = load_hnsw(synth_graph_path(name, g))
+            # 層0で届く点(固定の入口と、ランダムな入口)
+            _, in_deg = layer0_in_out(layers[0])
+            cache: dict[int, int] = {}
+            for e in [entry] + sorted(set(entries.ravel().tolist())):
+                cache[e] = int(reachable_from(layers[0], [e]).sum())
+            reach_rows.append({"data": name, "graph": g, "indeg0": int((in_deg == 0).sum()),
+                               "reach_fixed": cache[entry],
+                               "reach_random_min": min(cache[int(e)] for e in entries.ravel()),
+                               "reach_random_max": max(cache[int(e)] for e in entries.ravel())})
+            mode = "fixed" if g in ("layered", "hnsw") else "random"
+            for ef in efs:
+                runs = ([(-1, qi, entry) for qi in range(len(Q))] if mode == "fixed"
+                        else [(s, qi, int(entries[s, qi])) for s in range(n_seeds) for qi in range(len(Q))])
+                for s, qi, e in runs:
+                    if mode == "fixed":
+                        r = search_hnsw(X, layers, levels, entry, Q[qi], ef, ef)
+                    else:
+                        r = search_layer(X, layers[0], Q[qi], [e], ef)
+                    top1 = r["topk"][0]
+                    rows.append({"data": name, "graph": g, "mode": mode, "ef": ef, "seed": s, "query": qi,
+                                 "entry": e, "top1": top1,
+                                 "rank_top1": int((d_all[qi] < d_all[qi, top1]).sum()) + 1,
+                                 "recall1": recall_at_k([top1], GT[qi], 1),
+                                 "recall10": recall_at_k(r["topk"][:10], GT[qi], 10),
+                                 "n_dist": r["n_dist"], "n_topk": len(r["topk"])})
+            print(f"{name} {g}: 届く点 {reach_rows[-1]}, {time.perf_counter() - t0:.1f}秒", flush=True)
+        for fname, rs in ((f"step5_15_search_{name}.csv", rows), (f"step5_15_reachable_{name}.csv", reach_rows)):
+            with open(result_path(fname), "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=list(rs[0]))
+                writer.writeheader()
+                writer.writerows(rs)
+
+
 if __name__ == "__main__":
     step5_1_check_levels()
