@@ -12,6 +12,7 @@
 - NSW のグラフ(`nsw_sift10k_*.npz`)は `step4.py` の `step4_5_build_sift`、グラフ2〜4(`hnsw_sift10k_*.npz` と構築の距離計算回数 `*.n_dist.npy`)は `step5.py` の `step5_8_build_sift` で作り直す。HNSW の構築は1つ数十秒かかるので、M ごとに分けて実行してよい(`Ms=(10,)` など)
 - 5-15 の合成データ(`step5_15_*_X.npy` など)とそのグラフは `step5.py` の `step5_15_make_data` → `step5_15_build` で作り直す(データごとに分けて実行してよい)
 - `siftsmall/`(SIFT10K)は配布データ。変更しない
+- Step 6 の hnswlib は依存グループ `step6` に入れてある。実行は `uv run --group step6 python step6.py`。Windows では C++ のビルド環境(Microsoft C++ Build Tools)がないとビルドできないので、Step 6 は Claude の作業環境(Linux)で動かす(2026-11-26 に決定)。普段の `uv sync` には hnswlib は入らない
 
 ## 構成
 

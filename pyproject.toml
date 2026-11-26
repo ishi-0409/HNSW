@@ -15,6 +15,9 @@ dev = [
     "pytest",
     "matplotlib",
 ]
+step6 = [
+    "hnswlib>=0.8.0",
+]
 
 # パッケージとして配布しないので、uv にプロジェクト自体をインストールさせない
 [tool.uv]
