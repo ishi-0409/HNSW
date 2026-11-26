@@ -241,6 +241,7 @@ def search_hnsw(
         topk: クエリに近い順の点番号(最大k個)
         n_dist: 全層の距離計算回数
         n_dist0, n_expand, deg_sum: 層0だけの値(search_layer と同じ意味)
+        start0: 層0の探索を始めた点(上の層を降りてきた場所)
     """
     n_dist = 0
     ep = [entry]
@@ -252,6 +253,7 @@ def search_hnsw(
         ep = res["topk"][:1]
 
     # 層0:ef でビーム探索
+    start0 = ep[0]
     res = search_layer(X, layers[0], q, ep, ef)
     n_dist += res["n_dist"]
     return {
@@ -260,4 +262,5 @@ def search_hnsw(
         "n_dist0": res["n_dist"],
         "n_expand": res["n_expand"],
         "deg_sum": res["deg_sum"],
+        "start0": int(start0),
     }

@@ -14,7 +14,7 @@ from hnsw import (
     select_neighbors_simple,
     shrink_neighbors,
 )
-from graph import reachable_from
+from graph import reachable_from, search_layer
 from nsw import load_nsw
 
 DATA = Path(__file__).parent / "data"
@@ -138,7 +138,7 @@ def step5_5_check_search():
         entry, _ = insert_point_hnsw(X, layers, levels, idx, entry, 1, 2, 2)
     res = search_hnsw(X, layers, levels, entry, np.array([9], dtype=np.float32), k=2, ef=2)
     print(f"手計算の例: {res}")
-    assert res == {"topk": [4, 3], "n_dist": 6, "n_dist0": 3, "n_expand": 2, "deg_sum": 3}
+    assert res == {"topk": [4, 3], "n_dist": 6, "n_dist0": 3, "n_expand": 2, "deg_sum": 3, "start0": 3}  # 層1 で点3 から動かずに降りる
 
     # 動作確認:5-4 と同じ1000点で、別に作った100クエリの recall@10 を見る
     n, d, M, k = 1000, 8, 5, 10
@@ -488,6 +488,95 @@ def step5_10_layer0_start(M: int = 10, ef_construction: int = 100, seed: int = 0
         writer.writeheader()
         writer.writerow({"M": M, "n_dist_build": n_dist, "deg_mean": float(out_deg.mean()),
                          "deg_max": int(out_deg.max()), "indeg0": int((in_deg == 0).sum())})
+
+
+EFS = (10, 16, 32, 64, 128, 256)  # 4-9 と同じ
+
+
+def step5_11_search(
+    names: tuple[str, ...] = tuple(HNSW_VARIANTS),
+    Ms: tuple[int, ...] = (10, 20, 40),
+    efs: tuple[int, ...] = EFS,
+):
+    """グラフ2〜4 で100クエリを探索し、1回ごとの結果を (グラフ, M) ごとの csv に出す。
+    mode: random = 層0をランダムな入口 500 組から(グラフ2)、fixed = 固定の入口から上の層を降りる本来の探索(A)、
+    layer0 = 層0だけをランダムな入口 500 組から(D)。ランダムな入口は 2-6・4-9 と同じ"""
+    import time
+
+    X, Q, GT = load_sift()
+    with open(result_path("step2_greedy_M_entry.csv"), encoding="utf-8") as f:
+        pairs = [(int(r["seed"]), int(r["query"]), int(r["entry"])) for r in csv.DictReader(f) if int(r["M"]) == 10]
+    d_all = np.stack([np.linalg.norm(X - q, axis=1) for q in Q])
+
+    for M in Ms:
+        for name in names:
+            layers, levels, entry = load_hnsw(hnsw_path(name, M))
+            modes = ("random",) if name == "cap" else ("fixed", "layer0")
+            rows = []
+            t0 = time.perf_counter()
+            for mode in modes:
+                for ef in efs:
+                    if mode == "fixed":
+                        runs = [(-1, qi, entry) for qi in range(len(Q))]
+                    else:
+                        runs = pairs
+                    for seed, qi, e in runs:
+                        if mode == "fixed":
+                            s = search_hnsw(X, layers, levels, entry, Q[qi], ef, ef)
+                        else:
+                            s = search_layer(X, layers[0], Q[qi], [e], ef)
+                            s = {**s, "n_dist0": s["n_dist"], "start0": e}
+                        top1 = s["topk"][0]
+                        rows.append({
+                            "graph": name, "M": M, "mode": mode, "ef": ef, "seed": seed, "query": qi,
+                            "entry": e, "start0": s["start0"], "top1": top1,
+                            "rank_top1": int((d_all[qi] < d_all[qi, top1]).sum()) + 1,
+                            "recall1": recall_at_k([top1], GT[qi], 1),
+                            "recall10": recall_at_k(s["topk"][:10], GT[qi], 10),
+                            "n_dist": s["n_dist"], "n_dist0": s["n_dist0"], "n_expand": s["n_expand"],
+                            "deg_sum": s["deg_sum"], "n_topk": len(s["topk"]),
+                        })
+            with open(result_path(f"step5_11_search_{name}_M{M}.csv"), "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+            print(f"{name} M={M}: {len(rows)} 行, {time.perf_counter() - t0:.1f}秒", flush=True)
+
+
+def step5_11_check(Ms: tuple[int, ...] = (10, 20, 40)):
+    """5-11 の csv の確認"""
+    import pandas as pd
+
+    nsw = pd.read_csv(result_path("step4_9_beam_M_ef.csv"))
+    X, Q, GT = load_sift()
+    for M in Ms:
+        for name in HNSW_VARIANTS:
+            df = pd.read_csv(result_path(f"step5_11_search_{name}_M{M}.csv"))
+            if name == "cap":
+                assert len(df) == 500 * len(EFS) and set(df["mode"]) == {"random"}
+            else:
+                assert len(df) == 600 * len(EFS) and set(df["mode"]) == {"fixed", "layer0"}
+            assert (df["n_topk"] == df["ef"]).all()  # W は ef 件で満杯
+            assert (df["n_dist0"] <= 10000).all()  # 層0 で同じ点は2回測らない
+            r = df[df["mode"] != "fixed"]
+            assert (r["n_dist"] == r["n_dist0"]).all() and (r["start0"] == r["entry"]).all()
+            # ランダムな入口は 4-9 と同じ
+            keys = ["ef", "seed", "query"]
+            m = r.merge(nsw[nsw["M"] == M][keys + ["entry"]], on=keys, suffixes=("", "_nsw"))
+            assert len(m) == len(r) and (m["entry"] == m["entry_nsw"]).all()
+            # 1行を測り直す(各 mode の ef=10、最初の行)
+            layers, levels, entry = load_hnsw(hnsw_path(name, M))
+            for mode, d in df[df["ef"] == 10].groupby("mode"):
+                row = d.iloc[0]
+                q = Q[int(row["query"])]
+                if mode == "fixed":
+                    assert (d["entry"] == entry).all()
+                    s = search_hnsw(X, layers, levels, entry, q, 10, 10)
+                    assert s["start0"] == row["start0"] and s["n_dist"] > s["n_dist0"] - 1
+                else:
+                    s = search_layer(X, layers[0], q, [int(row["entry"])], 10)
+                assert s["topk"][0] == row["top1"] and s["n_dist"] == row["n_dist"]
+    print("5-11 の確認: OK")
 
 
 if __name__ == "__main__":
