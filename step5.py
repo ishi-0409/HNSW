@@ -14,6 +14,7 @@ from hnsw import (
     select_neighbors_simple,
     shrink_neighbors,
 )
+from graph import reachable_from
 from nsw import load_nsw
 
 DATA = Path(__file__).parent / "data"
@@ -336,6 +337,110 @@ def step5_8_summary(Ms: tuple[int, ...] = (10, 20, 40), ef_construction: int = 1
         for r in rows:
             print(r)
     print("5-8: OK")
+
+
+def layer0_in_out(graph0: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
+    """層0の各点の次数(出る辺の数)と被次数(向かってくる辺の数)"""
+    n = len(graph0)
+    out_deg = np.array([len(nb) for nb in graph0])
+    in_deg = np.zeros(n, dtype=int)
+    for nb in graph0:
+        in_deg[nb] += 1  # 近所に重複はない(check_hnsw で確認済み)
+    return out_deg, in_deg
+
+
+def step5_10_check_small():
+    # 5-3 の Mmax0=1 のグラフ(数直線 x = 0, 1, 3, 4, 10)。層0 は [[1], [0], [1], [1], [3]]、入口は点3
+    X = np.array([[0], [1], [3], [4], [10]], dtype=np.float32)
+    levels = np.array([1, 0, 0, 2, 0])
+    layers = [[[] for _ in range(5)] for _ in range(levels.max() + 1)]
+    entry = 0
+    for idx in range(1, 5):
+        entry, _ = insert_point_hnsw(X, layers, levels, idx, entry, 1, 1, 2)
+    assert layers[0] == [[1], [0], [1], [1], [3]] and entry == 3
+
+    out_deg, in_deg = layer0_in_out(layers[0])
+    print(f"次数={out_deg.tolist()}, 被次数={in_deg.tolist()}")
+    assert out_deg.tolist() == [1, 1, 1, 1, 1]
+    assert in_deg.tolist() == [1, 3, 0, 1, 0]  # 点2・点4 には誰も向かっていない
+    assert out_deg.sum() == in_deg.sum()
+
+    # 入口(点3)から届くのは 3 → 1 → 0 の3点。点2・点4 には届かない
+    r = reachable_from(layers[0], [entry])
+    print(f"点{entry} から届く点: {np.flatnonzero(r).tolist()}")
+    assert np.flatnonzero(r).tolist() == [0, 1, 3]
+    # 点4 から入ると 4 → 3 → 1 → 0 で4点(点2 だけは誰からも届かない)
+    assert reachable_from(layers[0], [4]).sum() == 4
+    print("5-10 の数直線の確認: OK")
+
+
+def load_layer0(name: str, M: int) -> tuple[list[list[int]], np.ndarray, int]:
+    """グラフ1(nsw)〜4 の層0、各点のレベル、入口を読む。NSW は層が1つで入口は最初に入れた点"""
+    if name == "nsw":
+        graph, order = load_nsw(DATA / f"nsw_sift10k_M{M}_efc100_seed0.npz")
+        return graph, np.zeros(len(graph), dtype=int), int(order[0])
+    layers, levels, entry = load_hnsw(hnsw_path(name, M))
+    return layers[0], levels, entry
+
+
+GRAPH_NAMES = ("nsw",) + tuple(HNSW_VARIANTS)  # グラフ1〜4
+
+
+def step5_10_degree(Ms: tuple[int, ...] = (10, 20, 40)):
+    """グラフ1〜4 の層0について、各点の次数・被次数・レベルを csv に出す"""
+    rows = []
+    for M in Ms:
+        for name in GRAPH_NAMES:
+            graph0, levels, entry = load_layer0(name, M)
+            out_deg, in_deg = layer0_in_out(graph0)
+            assert out_deg.sum() == in_deg.sum()  # どちらも辺の数(片方向ずつ)
+            if name != "nsw":
+                assert out_deg.max() <= 2 * M
+            for i in range(len(graph0)):
+                rows.append({"graph": name, "M": M, "point": i, "level": int(levels[i]),
+                             "degree": int(out_deg[i]), "indegree": int(in_deg[i])})
+            print(f"{name} M={M}: 次数 最大={out_deg.max()}, 平均={out_deg.mean():.2f}, "
+                  f"被次数0の点={int((in_deg == 0).sum())}", flush=True)
+    with open(result_path("step5_10_degree.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    print("5-10 次数: OK")
+
+
+def step5_10_reachable(Ms: tuple[int, ...] = (10, 20, 40)):
+    """層0で入口から届く点の数を csv に出す。入口は固定の入口(fixed)と、2-6 と同じランダムな 500 組(random)。
+    M ごとに別の csv にする(全部まとめると実行に時間がかかるため)"""
+    with open(result_path("step2_greedy_M_entry.csv"), encoding="utf-8") as f:
+        pairs = [(int(r["seed"]), int(r["query"]), int(r["entry"])) for r in csv.DictReader(f) if int(r["M"]) == 10]
+    assert len(pairs) == 500
+
+    for M in Ms:
+        rows = []
+        for name in GRAPH_NAMES:
+            graph0, _, entry = load_layer0(name, M)
+            _, in_deg = layer0_in_out(graph0)
+            cache: dict[int, int] = {}  # 同じ入口は1回だけ数える
+
+            def count(e: int) -> int:
+                if e not in cache:
+                    cache[e] = int(reachable_from(graph0, [e]).sum())
+                    # 被次数0の点には、その点自身から入らない限り届かない
+                    assert cache[e] <= len(graph0) - int(((in_deg == 0) & (np.arange(len(graph0)) != e)).sum())
+                return cache[e]
+
+            rows.append({"graph": name, "M": M, "entry_kind": "fixed", "seed": -1, "query": -1,
+                         "entry": entry, "n_reachable": count(entry)})
+            for seed, query, e in pairs:
+                rows.append({"graph": name, "M": M, "entry_kind": "random", "seed": seed, "query": query,
+                             "entry": e, "n_reachable": count(e)})
+            vals = [r["n_reachable"] for r in rows if r["graph"] == name]
+            print(f"{name} M={M}: 固定の入口から {rows[-501]['n_reachable']}、全入口で {min(vals)}〜{max(vals)}", flush=True)
+        with open(result_path(f"step5_10_reachable_M{M}.csv"), "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    print("5-10 届く点: OK")
 
 
 if __name__ == "__main__":
