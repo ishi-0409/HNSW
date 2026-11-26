@@ -579,5 +579,32 @@ def step5_11_check(Ms: tuple[int, ...] = (10, 20, 40)):
     print("5-11 の確認: OK")
 
 
+def step5_13_closed_set(M: int = 10):
+    """グラフ3(階層あり)M の層0の閉じた集まり S を求めて csv に出す。
+    S = 5-10 で届く点が一番少なかった入口から届く点。S から外へ出る辺は 0 本のはず"""
+    import pandas as pd
+
+    X, Q, GT = load_sift()
+    graph0, _, _ = load_layer0("layered", M)
+    reach = pd.read_csv(result_path(f"step5_10_reachable_M{M}.csv"))
+    r = reach[reach["graph"] == "layered"]
+    e = int(r.loc[r["n_reachable"].idxmin(), "entry"])
+    S = reachable_from(graph0, [e])
+    n_out = sum(1 for i in np.flatnonzero(S) for j in graph0[i] if not S[j])
+    print(f"入口 {e} から届く S: {int(S.sum())} 点、S から外へ出る辺: {n_out} 本")
+    assert int(S.sum()) == int(r["n_reachable"].min()) and n_out == 0
+
+    with open(result_path(f"step5_13_closed_set_points_M{M}.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["point", "in_S"])
+        writer.writerows([[i, int(S[i])] for i in range(len(S))])
+    with open(result_path(f"step5_13_closed_set_queries_M{M}.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["query", "gt1", "gt1_in_S", "gt10_in_S"])  # gt10_in_S:本当の上位10点のうち S の中の数
+        for qi in range(len(Q)):
+            writer.writerow([qi, int(GT[qi][0]), int(S[GT[qi][0]]), int(S[GT[qi][:10]].sum())])
+    print("5-13 S: OK")
+
+
 if __name__ == "__main__":
     step5_1_check_levels()

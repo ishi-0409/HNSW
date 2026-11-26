@@ -159,6 +159,121 @@ def step5_12_check(summary: pd.DataFrame, interp: pd.DataFrame) -> None:
     print("5-12 の確認: OK")
 
 
+KINDS = ["hit", "near", "mid", "far"]
+
+
+def add_kind(df: pd.DataFrame) -> pd.DataFrame:
+    """一番近い点の本当の順位で4種類に分ける(2-7・3-14・4-11 と同じ区切り)"""
+    df = df.copy()
+    df["kind"] = pd.cut(df["rank_top1"], bins=[0, 1, 10, 100, np.inf], labels=KINDS)
+    return df
+
+
+def step5_13_kinds(save: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """グラフ・探し方・M・ef ごとの hit/near/mid/far と、同じ距離計算回数での far の割合"""
+    df = add_kind(load_step5_11())
+    kinds = (pd.crosstab([df["graph"], df["mode"], df["M"], df["ef"]], df["kind"])
+             .reindex(columns=KINDS, fill_value=0).reset_index())
+    kinds.columns.name = None
+    kinds["n_rows"] = kinds[KINDS].sum(axis=1)
+    kinds["far_ratio"] = kinds["far"] / kinds["n_rows"]
+    nd = df.groupby(CURVE_KEYS)["n_dist"].mean().reset_index()
+    kinds = kinds.merge(nd, on=CURVE_KEYS)
+
+    interp_rows = []
+    for (g, mode, M), sub in kinds.groupby(["graph", "mode", "M"]):
+        sub = sub.rename(columns={"far_ratio": "recall10"})  # interp_recall は recall10 列を補間する
+        for x in TARGETS:
+            interp_rows.append({"graph": g, "mode": mode, "M": M, "n_dist": x,
+                                "far_ratio": interp_recall(sub, x)})
+    interp = pd.DataFrame(interp_rows)
+
+    step5_13_kinds_check(kinds)
+    print(interp.pivot(index=["graph", "mode"], columns=["M", "n_dist"], values="far_ratio").round(3).to_string())
+    if save:
+        kinds.to_csv(result_path("step5_13_kinds.csv"), index=False)
+        interp.to_csv(result_path("step5_13_far_interp.csv"), index=False)
+    return kinds, interp
+
+
+def step5_13_kinds_check(kinds: pd.DataFrame) -> None:
+    # hit の割合は 5-12 の recall@1 と一致する
+    s12 = pd.read_csv(result_path("step5_12_summary.csv"))
+    m = kinds.merge(s12, on=CURVE_KEYS, suffixes=("", "_12"))
+    assert len(m) == len(kinds) == len(s12)
+    assert (m["n_rows"] == m["n_rows_12"]).all()
+    assert np.allclose(m["hit"] / m["n_rows"], m["recall1"])
+    assert np.allclose(m["n_dist"], m["n_dist_12"])
+    # NSW は 4-11 と一致する
+    k4 = pd.read_csv(result_path("step4_11_kinds.csv"))
+    n = kinds[kinds["graph"] == "nsw"].merge(k4, on=["M", "ef"], suffixes=("", "_4"))
+    assert len(n) == 18
+    for c in KINDS:
+        assert (n[c] == n[c + "_4"]).all()
+    print("5-13 種類の確認: OK")
+
+
+def step5_13_per_query(save: bool = True) -> pd.DataFrame:
+    """入口が5つある探し方(NSW・グラフ2・D)で、クエリごとに far が何回だったか。
+    全入口で far(5回)と入口しだい(1〜4回)のクエリ数を数える"""
+    df = load_step5_11()
+    df = df[df["mode"] != "fixed"].copy()
+    df["far"] = df["rank_top1"] > 100
+    per_q = df.groupby(["graph", "mode", "M", "ef", "query"])["far"].sum().reset_index(name="n_far")
+    dist = (pd.crosstab([per_q["graph"], per_q["mode"], per_q["M"], per_q["ef"]], per_q["n_far"])
+            .reindex(columns=range(6), fill_value=0).reset_index())
+    dist.columns = [str(c) for c in dist.columns]
+    dist["all_far"] = dist["5"]  # 全入口で far
+    dist["depends"] = dist[["1", "2", "3", "4"]].sum(axis=1)  # 入口しだい
+
+    # A(固定の入口、1クエリ1回)は far のクエリ数だけ
+    a = load_step5_11()
+    a = a[a["mode"] == "fixed"]
+    fixed = (a.assign(far=a["rank_top1"] > 100).groupby(["graph", "mode", "M", "ef"])["far"].sum()
+             .reset_index(name="far_queries"))
+
+    # 確認:各行の合計が100クエリ。NSW は 4-11 と一致
+    assert (dist[[str(i) for i in range(6)]].sum(axis=1) == 100).all()
+    d4 = pd.read_csv(result_path("step4_11_far_dist.csv"))
+    n = dist[dist["graph"] == "nsw"].merge(d4, on=["M", "ef"], suffixes=("", "_4"))
+    assert len(n) == 18 and all((n[str(i)] == n[f"{i}_4"]).all() for i in range(6))
+    print("5-13 クエリごとの確認: OK")
+
+    cols = ["graph", "mode", "M", "ef", "all_far", "depends"]
+    print(dist[cols].to_string(index=False))
+    print(fixed.to_string(index=False))
+    if save:
+        dist.to_csv(result_path("step5_13_far_dist.csv"), index=False)
+        fixed.to_csv(result_path("step5_13_far_fixed.csv"), index=False)
+    return dist
+
+
+def step5_13_closed_set_summary(M: int = 10, save: bool = True) -> pd.DataFrame:
+    """グラフ3 M の A を「降りた場所が S の中か」×「本当の1位が S の中か」に分け、far の割合を出す"""
+    pts = pd.read_csv(result_path(f"step5_13_closed_set_points_M{M}.csv"))
+    qs = pd.read_csv(result_path(f"step5_13_closed_set_queries_M{M}.csv"))
+    df = pd.read_csv(result_path(f"step5_11_search_layered_M{M}.csv"))
+    df = df[df["mode"] == "fixed"].merge(qs, on="query")
+    df["start_in_S"] = pts.set_index("point").loc[df["start0"], "in_S"].to_numpy()
+    df["far"] = df["rank_top1"] > 100
+    # S の中に降りると S の外には出られないので、recall@10 の上限は「本当の上位10点のうち S の中の割合」
+    df["ceiling"] = np.where(df["start_in_S"] == 1, df["gt10_in_S"] / 10, 1.0)
+    assert (df["recall10"] <= df["ceiling"] + 1e-12).all()
+    table = (df.groupby(["ef", "start_in_S", "gt1_in_S"])
+               .agg(n_queries=("query", "size"), far=("far", "sum"), recall10=("recall10", "mean"),
+                    ceiling=("ceiling", "mean"))
+               .reset_index())
+    # 確認:各 ef で4通りの合計が100クエリ
+    assert (table.groupby("ef")["n_queries"].sum() == 100).all()
+    print(table.round(3).to_string(index=False))
+    if save:
+        table.to_csv(result_path(f"step5_13_closed_set_M{M}.csv"), index=False)
+    return table
+
+
 if __name__ == "__main__":
     step5_10_summary()
     step5_12_curves()
+    step5_13_kinds()
+    step5_13_per_query()
+    step5_13_closed_set_summary()
