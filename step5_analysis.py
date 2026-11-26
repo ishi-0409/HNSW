@@ -271,9 +271,55 @@ def step5_13_closed_set_summary(M: int = 10, save: bool = True) -> pd.DataFrame:
     return table
 
 
+def step5_14_decompose(save: bool = True) -> pd.DataFrame:
+    """層0で1点を調べるごとに新しく測った数を deg_mean × new_ratio に分ける(4-15 と同じ)。探索はしない"""
+    df = pd.concat([pd.read_csv(result_path(f"step5_11_search_{n}_M{M}.csv"))
+                    for n in ("cap", "layered", "hnsw") for M in (10, 20, 40)])
+    nsw = pd.read_csv(result_path("step4_15_deg_sum.csv"))
+    nsw = nsw[nsw["graph"] == "nsw"].assign(mode="random", n_dist0=lambda d: d["n_dist"])  # NSW は層0だけ
+    df = pd.concat([nsw, df], ignore_index=True)
+
+    t = (df.groupby(CURVE_KEYS)
+           .agg(n_dist=("n_dist", "mean"), n_dist0=("n_dist0", "mean"),
+                n_expand=("n_expand", "mean"), deg_sum=("deg_sum", "mean"))
+           .reset_index())
+    t["upper"] = t["n_dist"] - t["n_dist0"]  # 上の層での距離計算回数(A だけ 0 でない)
+    t["per_expand"] = (t["n_dist0"] - 1) / t["n_expand"]
+    t["deg_mean"] = t["deg_sum"] / t["n_expand"]
+    t["new_ratio"] = (t["n_dist0"] - 1) / t["deg_sum"]
+    # 層0の平均次数(5-10)と、それに対する deg_mean の比
+    s10 = pd.read_csv(result_path("step5_10_summary.csv"))[["graph", "M", "deg_mean", "deg_max"]]
+    t = t.merge(s10.rename(columns={"deg_mean": "avg_deg"}), on=["graph", "M"], how="left")
+    t["deg_over_avg"] = t["deg_mean"] / t["avg_deg"]
+
+    step5_14_check(t)
+    cols = ["graph", "mode", "M", "ef", "n_dist", "upper", "n_expand", "per_expand", "deg_mean", "avg_deg", "new_ratio"]
+    print(t[t["ef"] == 64][cols].round(3).to_string(index=False))
+    if save:
+        t.to_csv(result_path("step5_14_decompose.csv"), index=False)
+    return t
+
+
+def step5_14_check(t: pd.DataFrame) -> None:
+    assert np.allclose(t["per_expand"], t["deg_mean"] * t["new_ratio"])
+    assert (t[t["graph"] != "nsw"]["deg_mean"] <= 2 * t[t["graph"] != "nsw"]["M"]).all()
+    assert (t[t["mode"] != "fixed"]["upper"] == 0).all()
+    # NSW は 4-15 と一致
+    s4 = pd.read_csv(result_path("step4_15_summary.csv"))
+    s4 = s4[s4["graph"] == "nsw"].iloc[0]
+    n = t[t["graph"] == "nsw"].iloc[0]
+    assert np.isclose(n["deg_mean"], s4["deg_mean"]) and np.isclose(n["new_ratio"], s4["new_ratio"])
+    # n_dist は 5-12 と一致
+    s12 = pd.read_csv(result_path("step5_12_summary.csv"))
+    m = t.merge(s12, on=CURVE_KEYS, suffixes=("", "_12"))
+    assert len(m) == len(t) and np.allclose(m["n_dist"], m["n_dist_12"])
+    print("5-14 の確認: OK")
+
+
 if __name__ == "__main__":
     step5_10_summary()
     step5_12_curves()
     step5_13_kinds()
     step5_13_per_query()
     step5_13_closed_set_summary()
+    step5_14_decompose()
