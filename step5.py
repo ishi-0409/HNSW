@@ -443,5 +443,52 @@ def step5_10_reachable(Ms: tuple[int, ...] = (10, 20, 40)):
     print("5-10 届く点: OK")
 
 
+def step5_10_layer0_start(M: int = 10, ef_construction: int = 100, seed: int = 0):
+    """追加調査:グラフ3(階層あり)を、層0の探索だけ毎回点0から始めて作り直し、届く点を数える。
+    グラフ3 にだけ閉じた集まりができたのは、層0の探索を新しい点の近くから始めるからか、を確かめる。
+    グラフは保存しない"""
+    import time
+
+    X, _, _ = load_sift()
+    t0 = time.perf_counter()
+    layers, levels, entry, n_dist = build_hnsw(
+        X, M, ef_construction, 1 / np.log(M), 2 * M, seed=seed, layer0_start=0
+    )
+    print(f"構築 {time.perf_counter() - t0:.1f}秒, n_dist={n_dist}", flush=True)
+    check_hnsw(layers, levels, entry, M, 2 * M)
+    # レベルは元のグラフ3 と同じ(同じシード)。違うのは層0の探索の始め方だけ
+    _, levels3, entry3 = load_hnsw(hnsw_path("layered", M, ef_construction))
+    assert np.array_equal(levels, levels3) and entry == entry3
+
+    with open(result_path("step2_greedy_M_entry.csv"), encoding="utf-8") as f:
+        pairs = [(int(r["seed"]), int(r["query"]), int(r["entry"])) for r in csv.DictReader(f) if int(r["M"]) == 10]
+    graph0 = layers[0]
+    out_deg, in_deg = layer0_in_out(graph0)
+    cache: dict[int, int] = {}
+
+    def count(e: int) -> int:
+        if e not in cache:
+            cache[e] = int(reachable_from(graph0, [e]).sum())
+        return cache[e]
+
+    rows = [{"graph": "layered_start0", "M": M, "entry_kind": "fixed", "seed": -1, "query": -1,
+             "entry": entry, "n_reachable": count(entry)}]
+    for s, qi, e in pairs:
+        rows.append({"graph": "layered_start0", "M": M, "entry_kind": "random", "seed": s, "query": qi,
+                     "entry": e, "n_reachable": count(e)})
+    vals = [r["n_reachable"] for r in rows[1:]]
+    print(f"次数 平均={out_deg.mean():.2f} 最大={out_deg.max()}, 被次数0の点={int((in_deg == 0).sum())}")
+    print(f"固定の入口から {rows[0]['n_reachable']}、ランダムな入口で {min(vals)}〜{max(vals)}")
+    with open(result_path(f"step5_10_layer0_start_M{M}.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    with open(result_path(f"step5_10_layer0_start_M{M}_degree.csv"), "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["M", "n_dist_build", "deg_mean", "deg_max", "indeg0"])
+        writer.writeheader()
+        writer.writerow({"M": M, "n_dist_build": n_dist, "deg_mean": float(out_deg.mean()),
+                         "deg_max": int(out_deg.max()), "indeg0": int((in_deg == 0).sum())})
+
+
 if __name__ == "__main__":
     step5_1_check_levels()

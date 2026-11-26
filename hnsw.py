@@ -100,6 +100,7 @@ def insert_point_hnsw(
     Mmax0: int | None,
     ef_construction: int,
     heuristic: bool = False,
+    layer0_start: int | None = None,
 ) -> tuple[int, int]:
     """点idxを上の層から順に入れる(論文 Alg. 1)。
 
@@ -113,6 +114,8 @@ def insert_point_hnsw(
         Mmax0: 層0の次数の上限。None なら削らない(NSW との検算用)
         ef_construction: 辺を張る層で保持する候補の数
         heuristic: True なら近所を Alg. 4 で選ぶ(削るときも)。False なら Alg. 3
+        layer0_start: 指定すると、層0の探索を上の層から持ってきた W ではなくこの点から始める
+            (5-10 の追加調査用。None なら論文どおり)
     戻り値
         (更新後の入口, 距離計算回数)。距離計算回数は探索・近所の選択・削る処理の合計
     """
@@ -130,6 +133,8 @@ def insert_point_hnsw(
 
     # 層 min(L, l) 以下:近所を探して辺を張る
     for lc in range(min(L, l), -1, -1):
+        if lc == 0 and layer0_start is not None:
+            ep = [layer0_start]
         res = search_layer(X, layers[lc], q, ep, ef_construction)
         n_dist += res["n_dist"]
         if heuristic:
@@ -162,6 +167,7 @@ def build_hnsw(
     seed: int = 0,
     order: np.ndarray | None = None,
     heuristic: bool = False,
+    layer0_start: int | None = None,
 ) -> tuple[list[list[list[int]]], np.ndarray, int, int]:
     """Xの全点を順に入れてHNSWを作る(論文 Alg. 1 のくり返し)。
 
@@ -171,7 +177,7 @@ def build_hnsw(
         mL: レベルの出やすさ(assign_levels に渡す)
         seed: レベル用の乱数シード
         order: 入れる順番。None なら番号順(5-7 では NSW と同じ順番を渡す)
-        heuristic: insert_point_hnsw と同じ
+        heuristic, layer0_start: insert_point_hnsw と同じ
     戻り値
         (layers, levels, 入口, 構築の距離計算回数の合計)
     """
@@ -185,7 +191,7 @@ def build_hnsw(
     n_dist_total = 0
     for idx in order[1:]:
         entry, n_dist = insert_point_hnsw(
-            X, layers, levels, int(idx), entry, M, Mmax0, ef_construction, heuristic
+            X, layers, levels, int(idx), entry, M, Mmax0, ef_construction, heuristic, layer0_start
         )
         n_dist_total += n_dist
 
